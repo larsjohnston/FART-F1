@@ -30,7 +30,7 @@ const COLS: Col[] = [
   { key: 'avgFinish', label: ['Avg Race', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
   { key: 'dnf', label: ['2026 Races', 'DNF'], num: true, align: 'right', defDir: 'asc', get: d => (d.retiredOf ? d.retired / d.retiredOf : null), cell: d => (d.retiredOf ? `${d.retired}/${d.retiredOf}` : '–') },
   { key: 'posGained', label: ['Grid Positions', 'Gained'], num: true, align: 'right', defDir: 'desc', get: d => d.posGained, cell: d => `${d.posGained > 0 ? '+' : ''}${d.posGained}` },
-  { key: 'poolPoints', label: ['Season Cumulative', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
+  { key: 'poolPoints', label: ['FART', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
   { key: 'trackAvg', label: ['Track Avg', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
   { key: 'form', label: ['Last 3', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
 ]
