@@ -20,10 +20,26 @@ function Stat({ label, value }: { label: string; value: string }) {
   return <span><span style={{ color: 'var(--muted)' }}>{label}:</span> <b>{value}</b></span>
 }
 
+type Col = {
+  key: string; label: string; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
+  get: (d: DriverStat) => number | string | null
+  cell: (d: DriverStat) => string
+}
+const COLS: Col[] = [
+  { key: 'name', label: 'Driver', num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => d.name },
+  { key: 'avgFinish', label: 'Avg', num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
+  { key: 'retiredPct', label: 'DNF%', num: true, align: 'right', defDir: 'asc', get: d => d.retiredPct, cell: d => (d.retiredPct != null ? `${d.retiredPct}%` : '–') },
+  { key: 'posGained', label: 'Gain', num: true, align: 'right', defDir: 'desc', get: d => d.posGained, cell: d => `${d.posGained > 0 ? '+' : ''}${d.posGained}` },
+  { key: 'poolPoints', label: 'Pts', num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
+  { key: 'trackAvg', label: 'Trk', num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
+  { key: 'form', label: 'Form', num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
+]
+
 export default function StatsPage() {
   const [view, setView] = useState<'drivers' | 'players'>('drivers')
   const [data, setData] = useState<StatsData | null>(null)
   const [err, setErr] = useState('')
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'avgFinish', dir: 'asc' })
 
   useEffect(() => {
     (async () => {
@@ -48,6 +64,22 @@ export default function StatsPage() {
     background: active ? 'var(--accent)' : 'var(--panel-2)', color: '#fff', fontWeight: 700,
   })
 
+  function toggleSort(c: Col) {
+    setSort(s => (s.key === c.key ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: c.defDir }))
+  }
+
+  const sortCol = COLS.find(c => c.key === sort.key) ?? COLS[1]
+  const sortedDrivers = data
+    ? [...data.drivers].sort((a, b) => {
+        const av = sortCol.get(a), bv = sortCol.get(b)
+        if (!sortCol.num) return sort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return sort.dir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number)
+      })
+    : []
+
   return (
     <main style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22, margin: 0 }}>Stats</h1>
@@ -62,25 +94,47 @@ export default function StatsPage() {
       {data && view === 'drivers' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            Sorted by average finish (best first).{data.circuitName ? ` Track history = ${data.circuitName}.` : ''} Lower pool points = better draft target.
+            Tap a column to sort.{data.circuitName ? ` Trk = avg finish at ${data.circuitName} (3yr).` : ''} Lower Avg / Pts = better; higher Gain = better.
           </p>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {data.drivers.map(d => (
-              <div key={d.id} style={{ border: '1px solid var(--line)', borderLeft: `4px solid ${TEAM_COLORS[d.constructorId] ?? '#888'}`, borderRadius: 10, padding: '8px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ flex: 1, fontWeight: 700 }}>{d.name}</span>
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{d.team}</span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 6, fontSize: 12 }}>
-                  <Stat label="Avg finish" value={d.avgFinish ? `P${d.avgFinish}` : '–'} />
-                  <Stat label="Retired" value={d.retiredPct != null ? `${d.retiredPct}%` : '–'} />
-                  <Stat label="Pos gained" value={(d.posGained > 0 ? '+' : '') + d.posGained} />
-                  <Stat label="Form" value={d.last3.map(p => `P${p}`).join(' ') || '–'} />
-                  <Stat label="Pool pts" value={String(d.poolPoints)} />
-                  {d.trackAvg != null && <Stat label="Here (3yr avg)" value={`P${d.trackAvg}`} />}
-                </div>
-              </div>
-            ))}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {COLS.map(c => (
+                    <th
+                      key={c.key}
+                      onClick={() => toggleSort(c)}
+                      style={{
+                        textAlign: c.align, padding: '6px 6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                        fontWeight: 600, borderBottom: '1px solid var(--line)',
+                        color: sort.key === c.key ? 'var(--text)' : 'var(--muted)',
+                      }}
+                    >
+                      {c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedDrivers.map(d => (
+                  <tr key={d.id}>
+                    {COLS.map((c, i) => (
+                      <td
+                        key={c.key}
+                        style={{
+                          textAlign: c.align, padding: '6px 6px', whiteSpace: 'nowrap',
+                          borderBottom: '1px solid var(--line)',
+                          borderLeft: i === 0 ? `3px solid ${TEAM_COLORS[d.constructorId] ?? '#888'}` : undefined,
+                          fontWeight: i === 0 ? 700 : 400,
+                        }}
+                      >
+                        {c.cell(d)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}
