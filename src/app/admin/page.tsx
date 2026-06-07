@@ -3,6 +3,7 @@ import { useEffect, useState, CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { undoLastPick } from '@/lib/draft/service'
 import { usePlayer } from '@/lib/players/context'
+import NamePicker from '@/components/NamePicker'
 
 const inp: CSSProperties = {
   width: 64,
@@ -41,7 +42,8 @@ export default function AdminPage() {
       })
   }, [])
 
-  if (!actingAs?.is_commissioner) return <main style={{ padding: 20 }}>Commissioner only.</main>
+  if (!actingAs) return <NamePicker />
+  if (!actingAs.is_commissioner) return <main style={{ padding: 20 }}>Commissioner only.</main>
 
   async function sync() {
     setMsg('Syncing…')

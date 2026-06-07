@@ -7,6 +7,7 @@ import { onClock } from '@/lib/draft/engine'
 import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
 import OnTheClock from '@/components/OnTheClock'
+import NamePicker from '@/components/NamePicker'
 import { CURRENT_SEASON } from '@/lib/config'
 
 export default function DraftPage() {
@@ -90,7 +91,7 @@ export default function DraftPage() {
     return subscribePicks(draft.id, refresh)
   }, [draft, refresh])
 
-  if (!actingAs) return <main style={{ padding: 20 }}>Pick your name on the home screen first.</main>
+  if (!actingAs) return <NamePicker />
   if (!state || !draft) return <main style={{ padding: 20 }}>No active draft. Commissioner can open one in Admin.</main>
 
   const slot = onClock(state)
