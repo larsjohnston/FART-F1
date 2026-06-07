@@ -44,13 +44,21 @@ export default function PriorRacesPage() {
     setPts(Object.fromEntries((pp ?? []).map(r => [r.player_id, String(r.points)])))
 
     if (!race) { setDrivers([]); setAssign({}); return }
+    // All drivers in this race = results ∪ qualifying (results carries the full
+    // 22-car field even when some drivers set no qualifying time).
+    const { data: res } = await supabase
+      .from('results').select('driver_id,finish_position').eq('race_id', race.id)
     const { data: q } = await supabase
-      .from('qualifying').select('driver_id,position').eq('race_id', race.id).order('position')
-    const ids = (q ?? []).map(r => r.driver_id)
+      .from('qualifying').select('driver_id,position').eq('race_id', race.id)
+    const qpos = new Map((q ?? []).map(r => [r.driver_id, r.position]))
+    const fpos = new Map((res ?? []).map(r => [r.driver_id, r.finish_position]))
+    const ids = [...new Set([...(res ?? []).map(r => r.driver_id), ...(q ?? []).map(r => r.driver_id)])]
+    // Order by grid where available, otherwise by finishing position (after the qualifiers).
+    ids.sort((a, b) => (qpos.get(a) ?? (fpos.get(a) ?? 99) + 100) - (qpos.get(b) ?? (fpos.get(b) ?? 99) + 100))
     let drv: { id: string; given_name: string; family_name: string }[] = []
     if (ids.length) {
-      const res = await supabase.from('drivers').select('id,given_name,family_name').in('id', ids)
-      drv = res.data ?? []
+      const dres = await supabase.from('drivers').select('id,given_name,family_name').in('id', ids)
+      drv = dres.data ?? []
     }
     const nameMap = new Map(drv.map(d => [d.id, `${d.given_name?.[0] ?? ''}. ${d.family_name}`]))
     setDrivers(ids.map(id => ({ id, name: nameMap.get(id) ?? id })))
