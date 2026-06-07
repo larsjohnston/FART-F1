@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client'
 import { undoLastPick } from '@/lib/draft/service'
 import { usePlayer } from '@/lib/players/context'
 import NamePicker from '@/components/NamePicker'
+import { computePoolStandings, draftOrderFromStandings } from '@/lib/standings'
 
 const inp: CSSProperties = {
   width: 64, background: 'var(--panel-2)', color: 'var(--text)',
@@ -25,10 +26,13 @@ export default function AdminPage() {
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
-    supabase.from('players').select('id,name').order('sort_order').then(({ data }) => {
-      setPlayers(data ?? [])
-      setOrder((data ?? []).map(p => p.id))
-    })
+    (async () => {
+      const { data } = await supabase.from('players').select('id,name').order('sort_order')
+      const pls = data ?? []
+      setPlayers(pls)
+      const standings = await computePoolStandings(pls.map(p => p.id))
+      setOrder(draftOrderFromStandings(standings, pls.map(p => p.id)))
+    })()
     supabase.from('league_settings').select('draft_timing').eq('id', 1).maybeSingle()
       .then(({ data }) => { if (data?.draft_timing) setDraftTiming(data.draft_timing as 'before' | 'after') })
   }, [])
@@ -96,6 +100,12 @@ export default function AdminPage() {
     setOrder(next)
   }
 
+  async function autoOrder() {
+    const standings = await computePoolStandings(players.map(p => p.id))
+    setOrder(draftOrderFromStandings(standings, players.map(p => p.id)))
+    setMsg('Draft order set from standings (worst-placed picks first).')
+  }
+
   const nameById = Object.fromEntries(players.map(p => [p.id, p.name]))
 
   return (
@@ -123,7 +133,11 @@ export default function AdminPage() {
       </section>
 
       <section style={{ marginTop: 16 }}>
-        <h3>Draft order (worst-placed first; you set race 1 manually)</h3>
+        <h3>Draft order</h3>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+          Auto-set from the standings (worst-placed picks first). Override with ↑/↓.
+        </p>
+        <button onClick={autoOrder} style={{ ...btn, marginBottom: 8 }}>↻ Auto-set from standings</button>
         {order.map((id, i) => (
           <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6 }}>
             <span style={{ flex: 1 }}>{i + 1}. {nameById[id]}</span>
