@@ -14,8 +14,9 @@ export default function DraftPage() {
   const [draft, setDraft] = useState<DraftRow | null>(null)
   const [state, setState] = useState<DraftState | null>(null)
   const [drivers, setDrivers] = useState<DriverVM[]>([])
-  const [players, setPlayers] = useState<Record<string, { name: string }>>({})
+  const [players, setPlayers] = useState<Record<string, { name: string; color: string }>>({})
   const [raceName, setRaceName] = useState('')
+  const [view, setView] = useState<'players' | 'sequence'>('players')
 
   const refresh = useCallback(async () => {
     // Active race = latest race currently 'drafting'.
@@ -41,8 +42,8 @@ export default function DraftPage() {
     setDraft(loaded.draft)
     setState(loaded.state)
 
-    const { data: pl } = await supabase.from('players').select('id,name')
-    const playerMap = Object.fromEntries((pl ?? []).map(p => [p.id, { name: p.name }])) as Record<string, { name: string }>
+    const { data: pl } = await supabase.from('players').select('id,name,color')
+    const playerMap = Object.fromEntries((pl ?? []).map(p => [p.id, { name: p.name, color: p.color }])) as Record<string, { name: string; color: string }>
     setPlayers(playerMap)
 
     // Load drivers + constructors as two queries (anon-friendly).
@@ -118,6 +119,17 @@ export default function DraftPage() {
   const lastDriverName = last ? drivers.find(d => d.id === last.driverId)?.name ?? last.driverId : null
   const lastPlayerName = last ? players[last.playerId]?.name ?? '' : ''
 
+  const complete = !slot
+  const saved = draft.status === 'locked'
+  const driverById = new Map(drivers.map(d => [d.id, d]))
+  const orderedPicks = [...state.picks].sort((a, b) => a.overall - b.overall)
+
+  async function saveDraft() {
+    if (!draft) return
+    await supabase.from('drafts').update({ status: 'locked' }).eq('id', draft.id)
+    await refresh()
+  }
+
   return (
     <main>
       <div style={{ background: 'linear-gradient(90deg,#E8002D,#a80020)', padding: '12px 14px' }}>
@@ -125,7 +137,7 @@ export default function DraftPage() {
         <div style={{ fontSize: 17, fontWeight: 800 }}>{raceName}</div>
       </div>
       <OnTheClock name={onClockName} yours={yours} />
-      {actingAs.is_commissioner && last && (
+      {actingAs.is_commissioner && last && !saved && (
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--line)' }}>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>Last: {lastPlayerName} → {lastDriverName}</span>
           <button
@@ -142,11 +154,94 @@ export default function DraftPage() {
           &quot;picked by {actingAs.name}&quot;.
         </div>
       )}
-      <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {drivers.map(d => (
-          <DriverCard key={d.id} d={d} canPick={!!slot} onPick={() => pick(d.id)} />
-        ))}
-      </div>
+      {complete ? (
+        <div style={{ padding: 12 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button
+              onClick={() => setView('players')}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13, border: '1px solid var(--line)', background: view === 'players' ? 'var(--accent)' : 'var(--panel-2)', color: '#fff' }}
+            >
+              By player
+            </button>
+            <button
+              onClick={() => setView('sequence')}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13, border: '1px solid var(--line)', background: view === 'sequence' ? 'var(--accent)' : 'var(--panel-2)', color: '#fff' }}
+            >
+              Pick order
+            </button>
+          </div>
+
+          {view === 'players'
+            ? state.config.order.map(pid => {
+                const roster = orderedPicks.filter(p => p.playerId === pid)
+                const pl = players[pid]
+                return (
+                  <div key={pid} style={{ marginBottom: 12, border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: 'var(--panel)', borderLeft: `4px solid ${pl?.color ?? '#888'}`, fontWeight: 700 }}>
+                      {pl?.name ?? 'Player'}
+                    </div>
+                    {roster.map(p => {
+                      const d = driverById.get(p.driverId)
+                      return (
+                        <div key={p.overall} style={{ padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--line)' }}>
+                          <span style={{ width: 24, color: 'var(--muted)', fontSize: 12 }}>#{p.overall}</span>
+                          <span style={{ flex: 1, fontSize: 14 }}>
+                            {d?.name ?? p.driverId}
+                            {d?.team ? <span style={{ color: d.teamColor, fontSize: 12 }}> · {d.team}</span> : null}
+                          </span>
+                          {p.actorId !== p.playerId && (
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>by {players[p.actorId]?.name ?? '?'}</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })
+            : (
+                <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                  {orderedPicks.map(p => {
+                    const d = driverById.get(p.driverId)
+                    return (
+                      <div key={p.overall} style={{ padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line)' }}>
+                        <span style={{ width: 26, color: 'var(--warn)', fontWeight: 700 }}>{p.overall}</span>
+                        <span style={{ flex: 1, fontSize: 14 }}>
+                          <b style={{ color: players[p.playerId]?.color ?? '#fff' }}>{players[p.playerId]?.name ?? 'Player'}</b>
+                          {' → '}
+                          {d?.name ?? p.driverId}
+                          {d?.team ? <span style={{ color: d.teamColor, fontSize: 12 }}> · {d.team}</span> : null}
+                          {p.actorId !== p.playerId && (
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}> (by {players[p.actorId]?.name ?? '?'})</span>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+          {actingAs.is_commissioner && (
+            <div style={{ marginTop: 16 }}>
+              {saved ? (
+                <p style={{ color: 'var(--live)', fontWeight: 700 }}>✓ Draft saved &amp; locked</p>
+              ) : (
+                <button
+                  onClick={saveDraft}
+                  style={{ width: '100%', padding: '12px 0', borderRadius: 10, border: 'none', background: 'var(--live)', color: '#06210f', fontWeight: 800, fontSize: 15 }}
+                >
+                  💾 Save draft
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {drivers.map(d => (
+            <DriverCard key={d.id} d={d} canPick={!!slot} onPick={() => pick(d.id)} />
+          ))}
+        </div>
+      )}
     </main>
   )
 }
