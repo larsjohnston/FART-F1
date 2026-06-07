@@ -1,0 +1,8 @@
+# Build artifacts
+node_modules/
+.next/
+.env*
+.DS_Store
+
+# Brainstorm scratch
+.superpowers/
