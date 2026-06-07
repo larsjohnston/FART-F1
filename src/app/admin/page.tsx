@@ -55,7 +55,12 @@ export default function AdminPage() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ season: Number(season), round: Number(round) }),
     }).then(r => r.json())
-    setMsg(res.ok ? `Synced ${res.drivers} drivers (raced: ${res.raced})` : `Error: ${res.error}`)
+    setMsg(
+      !res.ok ? `Error: ${res.error}`
+        : res.raced ? `Results synced — ${res.drivers} drivers. You can Close & score.`
+        : res.qualified ? `Qualifying synced — ${res.drivers} drivers. Ready to open the draft.`
+        : 'Round is on the calendar but hasn’t qualified yet — sync again after Saturday qualifying.',
+    )
   }
 
   async function openDraft() {

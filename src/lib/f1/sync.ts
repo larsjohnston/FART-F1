@@ -19,9 +19,22 @@ async function getJSON(url: string) {
 export async function syncRound(season: number, round: number) {
   const db = serverClient()
 
-  const qualiJson = await getJSON(`${JOLPICA}/${season}/${round}/qualifying.json`)
-  const raceMeta = qualiJson.MRData.RaceTable.Races[0]
-  if (!raceMeta) throw new Error(`no race for ${season} round ${round}`)
+  // Race meta comes from the SCHEDULE endpoint — it exists as soon as the season
+  // calendar is published, so a round that hasn't qualified yet still resolves
+  // (instead of failing with a misleading "no race" error).
+  const schedJson = await getJSON(`${JOLPICA}/${season}/${round}.json`)
+  const raceMeta = schedJson.MRData.RaceTable.Races[0]
+  if (!raceMeta) throw new Error(`Round ${round} isn’t on the ${season} F1 calendar.`)
+
+  // Qualifying may not be posted yet (empty until the Saturday session).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let qualiJson: any = null
+  try {
+    const qj = await getJSON(`${JOLPICA}/${season}/${round}/qualifying.json`)
+    if (qj?.MRData?.RaceTable?.Races?.[0]?.QualifyingResults?.length) qualiJson = qj
+  } catch {
+    // not qualified yet
+  }
 
   // Results may not exist before the race; tolerate fetch failure / empty Races.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,17 +59,16 @@ export async function syncRound(season: number, round: number) {
     // headshots/colors unavailable this run
   }
 
+  // Don't knock an in-progress draft offline when re-syncing before the race.
+  const { data: existing } = await db
+    .from('races').select('status').eq('season', season).eq('round', round).maybeSingle()
+  const status = resultsJson ? 'complete' : existing?.status === 'drafting' ? 'drafting' : 'upcoming'
+
   // Upsert race row
   const { data: raceRow, error: raceErr } = await db
     .from('races')
     .upsert(
-      {
-        season,
-        round,
-        name: raceMeta.raceName,
-        date: raceMeta.date,
-        status: resultsJson ? 'complete' : 'upcoming',
-      },
+      { season, round, name: raceMeta.raceName, date: raceMeta.date, status },
       { onConflict: 'season,round' },
     )
     .select()
@@ -71,13 +83,13 @@ export async function syncRound(season: number, round: number) {
   let driverPayload: any
   if (resultsJson) {
     driverPayload = resultsJson
-  } else {
+  } else if (qualiJson) {
     driverPayload = {
       MRData: {
         RaceTable: {
           Races: [
             {
-              Results: (raceMeta.QualifyingResults ?? []).map(
+              Results: (qualiJson.MRData.RaceTable.Races[0].QualifyingResults ?? []).map(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (q: any) => ({
                   Driver: q.Driver,
@@ -90,6 +102,9 @@ export async function syncRound(season: number, round: number) {
         },
       },
     }
+  } else {
+    // Round on the calendar but not yet qualified — no drivers to add this run.
+    driverPayload = { MRData: { RaceTable: { Races: [{ Results: [] }] } } }
   }
   const { drivers, constructors } = parseDriversFromResults(driverPayload)
 
@@ -121,7 +136,7 @@ export async function syncRound(season: number, round: number) {
   }
 
   // Qualifying rows
-  const q = parseQualifying(qualiJson)
+  const q = qualiJson ? parseQualifying(qualiJson) : []
   if (q.length) {
     const { error: qErr } = await db.from('qualifying').upsert(
       q.map((r) => ({ race_id: raceId, driver_id: r.driverId, position: r.position })),
@@ -146,5 +161,5 @@ export async function syncRound(season: number, round: number) {
     if (resErr) throw new Error(`results upsert failed: ${resErr.message}`)
   }
 
-  return { raceId, raced: !!resultsJson, drivers: drivers.length }
+  return { raceId, raced: !!resultsJson, qualified: !!qualiJson, drivers: drivers.length }
 }
