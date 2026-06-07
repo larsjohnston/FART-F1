@@ -1,11 +1,11 @@
 'use client'
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { scoreRace, addToCumulative } from '@/lib/scoring/score'
+import { scoreRace, addToCumulative, driverPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON } from '@/lib/config'
 
 interface SeasonRow { name: string; color: string; points: number }
-interface WeekDriver { name: string; teamColor: string; pos: number }
+interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
 interface WeekRow { name: string; color: string; points: number; drivers: WeekDriver[] }
 interface Week { raceName: string; hasResults: boolean; rows: WeekRow[] }
 
@@ -76,17 +76,19 @@ export default function StandingsPage() {
     const byPlayer: Record<string, WeekDriver[]> = {}
     for (const p of picks ?? []) {
       const info = driverInfo.get(p.driver_id)
+      const pos = posByDriver.get(p.driver_id) ?? 0
       ;(byPlayer[p.player_id] ??= []).push({
         name: info?.name ?? p.driver_id,
         teamColor: info?.teamColor ?? '#888',
-        pos: posByDriver.get(p.driver_id) ?? 0,
+        pos,
+        points: pos ? driverPoints(pos) : 0,
       })
     }
     const wrows: WeekRow[] = Object.entries(byPlayer)
       .map(([pid, drivers]) => ({
         name: nameById[pid] ?? pid,
         color: colorById[pid] ?? '#888',
-        points: drivers.reduce((s, d) => s + d.pos, 0),
+        points: drivers.reduce((s, d) => s + d.points, 0),
         drivers: drivers.sort((a, b) => a.pos - b.pos),
       }))
       .sort((a, b) => a.points - b.points)
@@ -158,7 +160,7 @@ export default function StandingsPage() {
                   <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid var(--line)', fontSize: 13 }}>
                     <span style={{ width: 4, height: 16, borderRadius: 2, background: d.teamColor }} />
                     <span style={{ flex: 1 }}>{d.name}</span>
-                    <span style={{ color: 'var(--muted)' }}>P{d.pos} · {d.pos} pt{d.pos === 1 ? '' : 's'}</span>
+                    <span style={{ color: 'var(--muted)' }}>P{d.pos} · {d.points} pt{d.points === 1 ? '' : 's'}</span>
                   </div>
                 ))}
               </div>

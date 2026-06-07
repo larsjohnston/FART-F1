@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverClient } from '@/lib/supabase/server'
 import { CURRENT_SEASON } from '@/lib/config'
+import { driverPoints } from '@/lib/scoring/score'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
 const round1 = (n: number) => Math.round(n * 10) / 10
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
         const n = fs.length
         const avgFinish = round1(fs.reduce((s, f) => s + f.finish, 0) / n)
         const last3 = [...fs].sort((a, b) => b.round - a.round).slice(0, 3).map(f => f.finish)
-        const poolPoints = fs.reduce((s, f) => s + f.finish, 0)
+        const poolPoints = fs.reduce((s, f) => s + driverPoints(f.finish), 0)
         // positions gained: prefer real grid, fall back to qualifying position
         const gainable = fs
           .map(f => ({ start: f.grid && f.grid > 0 ? f.grid : f.quali, finish: f.finish }))
@@ -156,7 +157,7 @@ export async function GET(req: NextRequest) {
       let scored = false
       for (const p of picks.filter(p => p.draft_id === d.id)) {
         const fin = finishByKey.get(`${r.id}:${p.driver_id}`)
-        if (typeof fin === 'number') { totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + fin); scored = true }
+        if (typeof fin === 'number') { totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + driverPoints(fin)); scored = true }
       }
       if (!scored) continue
       const min = Math.min(...totals.values())
