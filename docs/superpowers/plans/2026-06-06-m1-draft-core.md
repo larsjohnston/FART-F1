@@ -298,15 +298,15 @@ alter publication supabase_realtime add table picks;
 alter publication supabase_realtime add table drafts;
 ```
 
-- [ ] **Step 2: Seed players (commissioner = Lars)**
+- [ ] **Step 2: Seed players (commissioner = Lats)**
 
-`supabase/seed.sql` — edit names/colors to the real 4 players:
+`supabase/seed.sql` — the real 4 players and their board colors (already decided, no edits needed):
 ```sql
 insert into players (name, color, is_commissioner, sort_order) values
-  ('Lars', '#E8002D', true,  0),
-  ('Dave', '#27F4D2', false, 1),
-  ('Sam',  '#FF8000', false, 2),
-  ('Theo', '#64C4FF', false, 3)
+  ('Lats',   '#FF4FA3', true,  0),
+  ('Horny',  '#FF8000', false, 1),
+  ('Shulks', '#27F4D2', false, 2),
+  ('Spenny', '#64C4FF', false, 3)
 on conflict (name) do nothing;
 ```
 
