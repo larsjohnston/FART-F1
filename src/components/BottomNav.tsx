@@ -6,7 +6,7 @@ const TABS = [
   { href: '/draft', label: 'Draft' },
   { href: '/standings', label: 'Standings' },
   { href: '/stats', label: 'Stats' },
-  { href: '/admin', label: 'Admin' },
+  { href: '/admin', label: 'Commissioner' },
 ]
 
 export default function BottomNav() {
