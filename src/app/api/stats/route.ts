@@ -103,16 +103,14 @@ export async function GET(req: NextRequest) {
         const posGained = gainable.length
           ? round1(gainable.reduce((s, x) => s + ((x.start as number) - x.finish), 0) / gainable.length)
           : 0
-        // retired % only if we have status data (null otherwise → shown as "–")
+        // DNFs as a count over the races we have status for (e.g. 1/6).
         const withStatus = fs.filter(f => f.status)
-        const retiredPct = withStatus.length
-          ? Math.round((withStatus.filter(f => !isFinish(f.status as string)).length / withStatus.length) * 100)
-          : null
+        const retired = withStatus.filter(f => !isFinish(f.status as string)).length
         return {
           id, name: driverName.get(id) ?? id,
           team: consName.get(driverCons.get(id) ?? '') ?? '',
           constructorId: driverCons.get(id) ?? '',
-          races: n, avgFinish, retiredPct, posGained, last3, poolPoints,
+          races: n, avgFinish, retired, retiredOf: withStatus.length, posGained, last3, poolPoints,
           trackAvg: null as number | null,
         }
       })

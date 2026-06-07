@@ -6,7 +6,7 @@ import { TEAM_COLORS } from '@/lib/f1/teamColors'
 
 interface DriverStat {
   id: string; name: string; team: string; constructorId: string; races: number
-  avgFinish: number; retiredPct: number | null; posGained: number; last3: number[]; poolPoints: number; trackAvg: number | null
+  avgFinish: number; retired: number; retiredOf: number; posGained: number; last3: number[]; poolPoints: number; trackAvg: number | null
 }
 interface TopPick { name: string; count: number }
 interface PlayerStat {
@@ -28,7 +28,7 @@ type Col = {
 const COLS: Col[] = [
   { key: 'name', label: ['Driver', 'Team'], num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => (<><div style={{ fontWeight: 700 }}>{d.name}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{d.team}</div></>) },
   { key: 'avgFinish', label: ['Avg Race', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
-  { key: 'retiredPct', label: ['2026 Races', 'DNF'], num: true, align: 'right', defDir: 'asc', get: d => d.retiredPct, cell: d => (d.retiredPct != null ? `${d.retiredPct}%` : '–') },
+  { key: 'dnf', label: ['2026 Races', 'DNF'], num: true, align: 'right', defDir: 'asc', get: d => (d.retiredOf ? d.retired / d.retiredOf : null), cell: d => (d.retiredOf ? `${d.retired}/${d.retiredOf}` : '–') },
   { key: 'posGained', label: ['Grid Positions', 'Gained'], num: true, align: 'right', defDir: 'desc', get: d => d.posGained, cell: d => `${d.posGained > 0 ? '+' : ''}${d.posGained}` },
   { key: 'poolPoints', label: ['Season Cumulative', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
   { key: 'trackAvg', label: ['Track Avg', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
