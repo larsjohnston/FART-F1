@@ -15,19 +15,24 @@ export default function StandingsPage() {
   const [week, setWeek] = useState<Week | null>(null)
 
   const load = useCallback(async () => {
-    const { data: players } = await supabase.from('players').select('id,name,color,carry_in_points')
-    const pl = (players ?? []) as { id: string; name: string; color: string; carry_in_points?: number }[]
+    const { data: players } = await supabase.from('players').select('id,name,color')
+    const pl = (players ?? []) as { id: string; name: string; color: string }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
 
     // ---------- Season (cumulative championship) ----------
+    // Prior races (1-5, before the app) contribute their entered/computed points.
+    const { data: prior } = await supabase
+      .from('prior_race_points').select('player_id,points').eq('season', CURRENT_SEASON)
+    let cumulative: Record<string, number> = {}
+    for (const p of pl) cumulative[p.id] = 0
+    for (const r of prior ?? []) cumulative[r.player_id] = (cumulative[r.player_id] ?? 0) + r.points
+
     const { data: completeRaces } = await supabase
       .from('races').select('id').eq('status', 'complete').eq('season', CURRENT_SEASON)
-    let cumulative: Record<string, number> = {}
-    for (const p of pl) cumulative[p.id] = p.carry_in_points ?? 0
     for (const r of completeRaces ?? []) {
       const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', r.id).maybeSingle()
-      // Skip backfilled historic races — they're already in carry_in_points.
+      // Skip backfilled historic races — their points come from prior_race_points.
       if (!draft || draft.historic) continue
       const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
       const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', r.id)
