@@ -53,21 +53,47 @@ export default function DraftPage() {
       .select('id,given_name,family_name,headshot_url,constructor_id')
     const { data: cons } = await supabase.from('constructors').select('id,name,color')
     const consMap = new Map((cons ?? []).map(c => [c.id, { name: c.name, color: c.color }]))
+    const headshotById = new Map((drv ?? []).map(d => [d.id, d.headshot_url]))
+    const dbNameById = new Map((drv ?? []).map(d => [d.id, `${d.given_name?.[0] ?? ''}. ${d.family_name}`]))
 
+    const takenBy = new Map(
+      loaded.state.picks.map(p => [p.driverId, playerMap[p.playerId]?.name ?? 'someone']),
+    )
+
+    // League setting: draft before or after qualifying.
+    const { data: settings } = await supabase
+      .from('league_settings').select('draft_timing').eq('id', 1).maybeSingle()
+
+    if (settings?.draft_timing === 'before') {
+      // Board = all current drivers ranked by the F1 drivers' championship.
+      const champ = await fetch(`/api/championship?season=${CURRENT_SEASON}`).then(r => r.json()).catch(() => null)
+      const list: { id: string; name: string; team: string; constructorId: string }[] = champ?.drivers ?? []
+      setDrivers(
+        list.map((d) => {
+          const c = consMap.get(d.constructorId)
+          return {
+            id: d.id,
+            name: dbNameById.get(d.id) ?? d.name,
+            team: c?.name ?? d.team,
+            teamColor: c?.color ?? '#888',
+            headshot: headshotById.get(d.id) ?? null,
+            quali: undefined,
+            drafted: takenBy.has(d.id) ? { byName: takenBy.get(d.id)! } : null,
+          } as DriverVM
+        }),
+      )
+      return
+    }
+
+    // After qualifying: only the drivers who qualified for THIS race, by grid.
     const { data: q } = await supabase
       .from('qualifying')
       .select('driver_id,position')
       .eq('race_id', race.id)
     const qmap = new Map((q ?? []).map(r => [r.driver_id, r.position]))
 
-    const takenBy = new Map(
-      loaded.state.picks.map(p => [p.driverId, playerMap[p.playerId]?.name ?? 'someone']),
-    )
-
     setDrivers(
       (drv ?? [])
-        // Only the drivers who qualified for THIS race are draftable (the 22 on
-        // the 2026 grid), never the whole cross-season drivers table.
         .filter((d) => qmap.has(d.id))
         .map((d) => {
           const c = consMap.get(d.constructor_id) ?? { name: '', color: '#888' }

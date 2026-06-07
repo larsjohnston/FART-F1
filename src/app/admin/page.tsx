@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [histRound, setHistRound] = useState('1')
   const [histDrivers, setHistDrivers] = useState<{ id: string; name: string }[]>([])
   const [histAssign, setHistAssign] = useState<Record<string, string>>({})
+  const [draftTiming, setDraftTiming] = useState<'before' | 'after'>('after')
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -43,6 +44,8 @@ export default function AdminPage() {
         setOrder((data ?? []).map(p => p.id))
         setCarryIn(Object.fromEntries((data ?? []).map(p => [p.id, String(p.carry_in_points ?? 0)])))
       })
+    supabase.from('league_settings').select('draft_timing').eq('id', 1).maybeSingle()
+      .then(({ data }) => { if (data?.draft_timing) setDraftTiming(data.draft_timing as 'before' | 'after') })
   }, [])
 
   if (!actingAs) return <NamePicker />
@@ -61,6 +64,13 @@ export default function AdminPage() {
         : res.qualified ? `Qualifying synced — ${res.drivers} drivers. Ready to open the draft.`
         : 'Round is on the calendar but hasn’t qualified yet — sync again after Saturday qualifying.',
     )
+  }
+
+  async function setTiming(timing: 'before' | 'after') {
+    setDraftTiming(timing)
+    const { error } = await supabase.from('league_settings').update({ draft_timing: timing }).eq('id', 1)
+    setMsg(error ? `Error: ${error.message}`
+      : `Draft timing: ${timing === 'before' ? 'BEFORE qualifying (championship order)' : 'AFTER qualifying (grid order)'}.`)
   }
 
   async function openDraft() {
@@ -192,6 +202,28 @@ export default function AdminPage() {
         </label>
         <div style={{ marginTop: 8 }}>
           <button onClick={sync} style={btn}>Sync F1 data</button>
+        </div>
+      </section>
+
+      <section style={{ marginTop: 16 }}>
+        <h3>Draft timing (league default)</h3>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+          Before quali: board shows all drivers by championship standings (draftable as soon as the prior race is closed).
+          After quali: board shows the qualifying grid.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setTiming('before')}
+            style={{ ...btn, background: draftTiming === 'before' ? 'var(--accent)' : 'var(--panel-2)' }}
+          >
+            Before qualifying
+          </button>
+          <button
+            onClick={() => setTiming('after')}
+            style={{ ...btn, background: draftTiming === 'after' ? 'var(--accent)' : 'var(--panel-2)' }}
+          >
+            After qualifying
+          </button>
         </div>
       </section>
 
