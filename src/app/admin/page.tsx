@@ -23,8 +23,8 @@ const btn: CSSProperties = {
 export default function AdminPage() {
   const { actingAs } = usePlayer()
   const [players, setPlayers] = useState<{ id: string; name: string }[]>([])
-  const [season, setSeason] = useState('2024')
-  const [round, setRound] = useState('1')
+  const [season, setSeason] = useState('2026')
+  const [round, setRound] = useState('6')
   const [order, setOrder] = useState<string[]>([])
   const [msg, setMsg] = useState('')
 

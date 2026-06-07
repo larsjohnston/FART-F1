@@ -5,6 +5,7 @@ import {
   parseDriversFromResults,
   parseOpenF1,
 } from './parse'
+import { TEAM_COLORS } from './teamColors'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
 
@@ -32,9 +33,18 @@ export async function syncRound(season: number, round: number) {
     // not raced yet
   }
 
-  const openf1 = parseOpenF1(
-    await getJSON('https://api.openf1.org/v1/drivers?session_key=latest'),
-  )
+  // OpenF1 supplies driver headshots + live livery colors, but it is cosmetic
+  // and locks down to paid users *during a live session* (i.e. on race day, the
+  // one day this app is used). Never let it block the core Jolpica draft data —
+  // cards fall back to colored initials, and TEAM_COLORS covers team colors.
+  let openf1: Record<string, { headshotUrl: string; teamColour: string; teamName: string }> = {}
+  try {
+    openf1 = parseOpenF1(
+      await getJSON('https://api.openf1.org/v1/drivers?session_key=latest'),
+    )
+  } catch {
+    // headshots/colors unavailable this run
+  }
 
   // Upsert race row
   const { data: raceRow, error: raceErr } = await db
@@ -84,7 +94,7 @@ export async function syncRound(season: number, round: number) {
   const { drivers, constructors } = parseDriversFromResults(driverPayload)
 
   const { error: cErr } = await db.from('constructors').upsert(
-    constructors.map((c) => ({ id: c.id, name: c.name })),
+    constructors.map((c) => ({ id: c.id, name: c.name, color: TEAM_COLORS[c.id] ?? '#888' })),
     { onConflict: 'id' },
   )
   if (cErr) throw new Error(`constructors upsert failed: ${cErr.message}`)

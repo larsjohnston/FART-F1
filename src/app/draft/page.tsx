@@ -7,6 +7,7 @@ import { onClock } from '@/lib/draft/engine'
 import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
 import OnTheClock from '@/components/OnTheClock'
+import { CURRENT_SEASON } from '@/lib/config'
 
 export default function DraftPage() {
   const { actingAs } = usePlayer()
@@ -22,6 +23,7 @@ export default function DraftPage() {
       .from('races')
       .select('id,name')
       .eq('status', 'drafting')
+      .eq('season', CURRENT_SEASON)
       .order('round', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -62,6 +64,9 @@ export default function DraftPage() {
 
     setDrivers(
       (drv ?? [])
+        // Only the drivers who qualified for THIS race are draftable (the 22 on
+        // the 2026 grid), never the whole cross-season drivers table.
+        .filter((d) => qmap.has(d.id))
         .map((d) => {
           const c = consMap.get(d.constructor_id) ?? { name: '', color: '#888' }
           return {

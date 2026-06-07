@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative } from '@/lib/scoring/score'
+import { CURRENT_SEASON } from '@/lib/config'
 
 interface Row { name: string; points: number }
 
@@ -13,7 +14,11 @@ export default function StandingsPage() {
       const { data: players } = await supabase.from('players').select('id,name')
       const nameById: Record<string, string> = Object.fromEntries((players ?? []).map(p => [p.id, p.name]))
 
-      const { data: races } = await supabase.from('races').select('id').eq('status', 'complete')
+      const { data: races } = await supabase
+        .from('races')
+        .select('id')
+        .eq('status', 'complete')
+        .eq('season', CURRENT_SEASON)
 
       let cumulative: Record<string, number> = {}
       for (const r of races ?? []) {
