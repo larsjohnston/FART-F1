@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { CURRENT_SEASON } from '@/lib/config'
 import { TEAM_COLORS } from '@/lib/f1/teamColors'
@@ -21,18 +21,18 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 type Col = {
-  key: string; label: string; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
+  key: string; label: [string, string]; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
   get: (d: DriverStat) => number | string | null
-  cell: (d: DriverStat) => string
+  cell: (d: DriverStat) => ReactNode
 }
 const COLS: Col[] = [
-  { key: 'name', label: 'Driver', num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => d.name },
-  { key: 'avgFinish', label: 'Avg', num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
-  { key: 'retiredPct', label: 'DNF%', num: true, align: 'right', defDir: 'asc', get: d => d.retiredPct, cell: d => (d.retiredPct != null ? `${d.retiredPct}%` : '–') },
-  { key: 'posGained', label: 'Gain', num: true, align: 'right', defDir: 'desc', get: d => d.posGained, cell: d => `${d.posGained > 0 ? '+' : ''}${d.posGained}` },
-  { key: 'poolPoints', label: 'Pts', num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
-  { key: 'trackAvg', label: 'Trk', num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
-  { key: 'form', label: 'Form', num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
+  { key: 'name', label: ['Driver', 'Team'], num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => (<><div style={{ fontWeight: 700 }}>{d.name}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{d.team}</div></>) },
+  { key: 'avgFinish', label: ['Avg Race', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
+  { key: 'retiredPct', label: ['2026 Races', 'DNF'], num: true, align: 'right', defDir: 'asc', get: d => d.retiredPct, cell: d => (d.retiredPct != null ? `${d.retiredPct}%` : '–') },
+  { key: 'posGained', label: ['Grid Positions', 'Gained'], num: true, align: 'right', defDir: 'desc', get: d => d.posGained, cell: d => `${d.posGained > 0 ? '+' : ''}${d.posGained}` },
+  { key: 'poolPoints', label: ['Season Cumulative', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
+  { key: 'trackAvg', label: ['Track Avg', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
+  { key: 'form', label: ['Last 3', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
 ]
 
 export default function StatsPage() {
@@ -94,7 +94,7 @@ export default function StatsPage() {
       {data && view === 'drivers' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            Tap a column to sort.{data.circuitName ? ` Trk = avg finish at ${data.circuitName} (3yr).` : ''} Lower Avg / Pts = better; higher Gain = better.
+            Tap a column to sort.{data.circuitName ? ` Track Avg Finish is at ${data.circuitName}, last 3 yrs.` : ''} Lower is better — except Grid Positions Gained.
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -106,11 +106,12 @@ export default function StatsPage() {
                       onClick={() => toggleSort(c)}
                       style={{
                         textAlign: c.align, padding: '6px 6px', cursor: 'pointer', whiteSpace: 'nowrap',
-                        fontWeight: 600, borderBottom: '1px solid var(--line)',
+                        fontWeight: 600, borderBottom: '1px solid var(--line)', verticalAlign: 'bottom',
                         color: sort.key === c.key ? 'var(--text)' : 'var(--muted)',
                       }}
                     >
-                      {c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      <div>{c.label[0]}</div>
+                      <div>{c.label[1]}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</div>
                     </th>
                   ))}
                 </tr>
@@ -122,10 +123,9 @@ export default function StatsPage() {
                       <td
                         key={c.key}
                         style={{
-                          textAlign: c.align, padding: '6px 6px', whiteSpace: 'nowrap',
+                          textAlign: c.align, padding: '6px 6px', whiteSpace: 'nowrap', verticalAlign: 'middle',
                           borderBottom: '1px solid var(--line)',
                           borderLeft: i === 0 ? `3px solid ${TEAM_COLORS[d.constructorId] ?? '#888'}` : undefined,
-                          fontWeight: i === 0 ? 700 : 400,
                         }}
                       >
                         {c.cell(d)}
