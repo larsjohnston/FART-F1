@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FART-F1
 
-## Getting Started
+Mobile-first fantasy F1 draft pool for 4 players. Each race weekend you draft 5 drivers; lowest cumulative finishing positions wins the season (golf-style scoring).
 
-First, run the development server:
+- Spec: [`docs/superpowers/specs/2026-06-06-f1-fantasy-draft-pool-design.md`](docs/superpowers/specs/2026-06-06-f1-fantasy-draft-pool-design.md)
+- Milestone 1 plan: [`docs/superpowers/plans/2026-06-06-m1-draft-core.md`](docs/superpowers/plans/2026-06-06-m1-draft-core.md)
+
+## Stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind v4 · Vitest · Supabase (Postgres + Realtime) · Vercel.
+
+## Local dev
 
 ```bash
+npm install
+cp .env.local.example .env.local   # then paste your Supabase values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env.local` needs:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+NEXT_PUBLIC_SUPABASE_URL=         # Project URL from Supabase → Settings → API
+NEXT_PUBLIC_SUPABASE_ANON_KEY=    # anon public key (JWT, ~200+ chars)
+SUPABASE_SERVICE_ROLE_KEY=        # service_role key (JWT, ~200+ chars) — server only
+SUPABASE_DB_URL=                  # Postgres connection string for migrations + sync script
+F1_SEASON=2024
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## One-time setup
 
-## Learn More
+```bash
+npm run db:apply       # creates tables + seeds the 4 players via SUPABASE_DB_URL
+npm run sync:season    # fetches Jolpica + OpenF1 for every round of F1_SEASON, upserts to DB
+```
 
-To learn more about Next.js, take a look at the following resources:
+`db:apply` is idempotent (CREATE IF NOT EXISTS, ON CONFLICT DO NOTHING). `sync:season` runs through round 24, breaking on the first empty round.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How it works
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Pick your name** (`/`) — tap a player; the choice persists in localStorage.
+2. **Admin** (`/admin`, commissioner only) — Sync a round, set draft order, open the draft, undo, close & score.
+3. **Draft** (`/draft`) — straight 1-2-3-4 order for 5 rounds. Picks broadcast live to all devices via Supabase Realtime. Anyone can pick on behalf of an absent player; the actor is stamped separately.
+4. **Standings** (`/standings`) — cumulative golf scoring across every race marked `complete`.
 
-## Deploy on Vercel
+## Scoring
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+A driver scores their finishing position (winner = 1, 20th = 20). A player's weekly total is the sum of their 5 drivers. Season total adds across weeks. Lower is better.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Next dev server on http://localhost:3000 |
+| `npm run build` | Production build + typecheck |
+| `npm test` | Vitest run (pure parser / scoring / draft engine tests) |
+| `npm run db:apply` | Apply migration + seed via direct Postgres |
+| `npm run sync:season` | Backfill a full F1 season via Jolpica + OpenF1 |
+
+## Deploying
+
+See Vercel + env-var steps in [`MORNING.md`](MORNING.md) for the current bootstrap state.
+
+## Architecture boundaries
+
+- `src/lib/f1/parse.ts`, `src/lib/scoring/score.ts`, `src/lib/draft/engine.ts` are **pure** (no I/O) and carry the unit tests.
+- `src/lib/f1/sync.ts` and `src/lib/draft/service.ts` own all DB / realtime I/O.
+- `src/components/*` are presentational; `src/app/**/page.tsx` wires data + context.
