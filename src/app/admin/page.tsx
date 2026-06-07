@@ -28,6 +28,9 @@ export default function AdminPage() {
   const [round, setRound] = useState('6')
   const [order, setOrder] = useState<string[]>([])
   const [carryIn, setCarryIn] = useState<Record<string, string>>({})
+  const [histRound, setHistRound] = useState('1')
+  const [histDrivers, setHistDrivers] = useState<{ id: string; name: string }[]>([])
+  const [histAssign, setHistAssign] = useState<Record<string, string>>({})
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -117,6 +120,50 @@ export default function AdminPage() {
     setMsg('Carry-in points saved. Check Standings.')
   }
 
+  async function loadHistRound() {
+    setMsg('Loading round…')
+    const { data: race } = await supabase
+      .from('races').select('id').eq('season', Number(season)).eq('round', Number(histRound)).maybeSingle()
+    if (!race) { setMsg('That round isn’t synced yet — Sync it first.'); setHistDrivers([]); return }
+    const { data: q } = await supabase
+      .from('qualifying').select('driver_id,position').eq('race_id', race.id).order('position')
+    const ids = (q ?? []).map(r => r.driver_id)
+    const { data: drv } = await supabase.from('drivers').select('id,given_name,family_name').in('id', ids)
+    const nameMap = new Map((drv ?? []).map(d => [d.id, `${d.given_name?.[0] ?? ''}. ${d.family_name}`]))
+    setHistDrivers(ids.map(id => ({ id, name: nameMap.get(id) ?? id })))
+    const { data: draft } = await supabase.from('drafts').select('id').eq('race_id', race.id).maybeSingle()
+    if (draft) {
+      const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
+      setHistAssign(Object.fromEntries((picks ?? []).map(p => [p.driver_id, p.player_id])))
+    } else {
+      setHistAssign({})
+    }
+    setMsg(`Loaded ${ids.length} drivers for round ${histRound}.`)
+  }
+
+  async function saveHistRound() {
+    setMsg('Saving historic picks…')
+    const { data: race } = await supabase
+      .from('races').select('id').eq('season', Number(season)).eq('round', Number(histRound)).maybeSingle()
+    if (!race) { setMsg('Round not synced.'); return }
+    const { data: draft, error: dErr } = await supabase
+      .from('drafts')
+      .upsert({ race_id: race.id, pick_order: order, status: 'locked', rounds: 5, historic: true }, { onConflict: 'race_id' })
+      .select('id').single()
+    if (dErr || !draft) { setMsg(`Draft save failed: ${dErr?.message}`); return }
+    await supabase.from('picks').delete().eq('draft_id', draft.id)
+    const entries = Object.entries(histAssign).filter(([, pid]) => pid)
+    const rows = entries.map(([driverId, playerId], i) => ({
+      draft_id: draft.id, overall: i + 1, round: Math.floor(i / Math.max(players.length, 1)) + 1,
+      player_id: playerId, actor_id: playerId, driver_id: driverId,
+    }))
+    if (rows.length) {
+      const { error: pErr } = await supabase.from('picks').insert(rows)
+      if (pErr) { setMsg(`Picks insert failed: ${pErr.message}`); return }
+    }
+    setMsg(`Saved ${rows.length} historic picks for round ${histRound}.`)
+  }
+
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
     if (j < 0 || j >= order.length) return
@@ -159,6 +206,37 @@ export default function AdminPage() {
           </div>
         ))}
         <button onClick={saveCarryIn} style={{ ...btn, marginTop: 8 }}>Save carry-in points</button>
+      </section>
+
+      <section style={{ marginTop: 16 }}>
+        <h3>Backfill historic picks (past races)</h3>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+          For races run before the app (1-5). Feeds the Stats page; excluded from standings since carry-in covers them.
+        </p>
+        <label>Round <input value={histRound} onChange={e => setHistRound(e.target.value)} style={inp} /></label>{' '}
+        <button onClick={loadHistRound} style={btn}>Load round</button>
+        {histDrivers.length > 0 && (
+          <>
+            <div style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0' }}>
+              {players.map(p => `${p.name}: ${Object.values(histAssign).filter(v => v === p.id).length}`).join('  ·  ')}
+            </div>
+            {histDrivers.map(d => (
+              <div key={d.id} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>
+                <span style={{ flex: 1, fontSize: 13 }}>{d.name}</span>
+                {players.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setHistAssign(a => ({ ...a, [d.id]: a[d.id] === p.id ? '' : p.id }))}
+                    style={{ ...btn, padding: '4px 8px', fontSize: 11, background: histAssign[d.id] === p.id ? 'var(--accent)' : 'var(--panel-2)' }}
+                  >
+                    {p.name.slice(0, 3)}
+                  </button>
+                ))}
+              </div>
+            ))}
+            <button onClick={saveHistRound} style={{ ...btn, marginTop: 8 }}>Save historic picks</button>
+          </>
+        )}
       </section>
 
       <section style={{ marginTop: 16 }}>

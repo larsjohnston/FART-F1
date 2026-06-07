@@ -26,8 +26,9 @@ export default function StandingsPage() {
     let cumulative: Record<string, number> = {}
     for (const p of pl) cumulative[p.id] = p.carry_in_points ?? 0
     for (const r of completeRaces ?? []) {
-      const { data: draft } = await supabase.from('drafts').select('id').eq('race_id', r.id).maybeSingle()
-      if (!draft) continue
+      const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', r.id).maybeSingle()
+      // Skip backfilled historic races — they're already in carry_in_points.
+      if (!draft || draft.historic) continue
       const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
       const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', r.id)
       const byPlayer: Record<string, string[]> = {}
