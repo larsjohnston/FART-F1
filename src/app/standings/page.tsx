@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { scoreRace, addToCumulative, driverPoints } from '@/lib/scoring/score'
+import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON } from '@/lib/config'
 
 interface SeasonRow { name: string; color: string; points: number }
@@ -73,15 +73,15 @@ export default function StandingsPage() {
     if (hasResults) for (const r of results ?? []) posByDriver.set(r.driver_id, r.finish_position)
     else for (const q of quali ?? []) posByDriver.set(q.driver_id, q.position)
 
+    const wkPts = rankDraftedPoints((picks ?? []).map(p => p.driver_id), posByDriver)
     const byPlayer: Record<string, WeekDriver[]> = {}
     for (const p of picks ?? []) {
       const info = driverInfo.get(p.driver_id)
-      const pos = posByDriver.get(p.driver_id) ?? 0
       ;(byPlayer[p.player_id] ??= []).push({
         name: info?.name ?? p.driver_id,
         teamColor: info?.teamColor ?? '#888',
-        pos,
-        points: pos ? driverPoints(pos) : 0,
+        pos: posByDriver.get(p.driver_id) ?? 0,
+        points: wkPts.get(p.driver_id) ?? 0,
       })
     }
     const wrows: WeekRow[] = Object.entries(byPlayer)

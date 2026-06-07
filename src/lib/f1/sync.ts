@@ -59,10 +59,18 @@ export async function syncRound(season: number, round: number) {
     // headshots/colors unavailable this run
   }
 
-  // Don't knock an in-progress draft offline when re-syncing before the race.
+  // Pulling results does NOT auto-score the race: preserve an in-progress
+  // 'drafting' (or already 'complete') status so the commissioner can verify in
+  // This Week, then explicitly Close & score. Only a brand-new round that's
+  // already raced lands as 'complete'.
   const { data: existing } = await db
     .from('races').select('status').eq('season', season).eq('round', round).maybeSingle()
-  const status = resultsJson ? 'complete' : existing?.status === 'drafting' ? 'drafting' : 'upcoming'
+  const status =
+    existing?.status === 'drafting' || existing?.status === 'complete'
+      ? existing.status
+      : resultsJson
+        ? 'complete'
+        : 'upcoming'
 
   // Upsert race row
   const { data: raceRow, error: raceErr } = await db

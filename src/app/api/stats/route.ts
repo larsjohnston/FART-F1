@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverClient } from '@/lib/supabase/server'
 import { CURRENT_SEASON } from '@/lib/config'
-import { driverPoints } from '@/lib/scoring/score'
+import { rankDraftedPoints } from '@/lib/scoring/score'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
 const round1 = (n: number) => Math.round(n * 10) / 10
@@ -46,6 +46,33 @@ export async function GET(req: NextRequest) {
     const driverName = new Map((driverRows ?? []).map(d => [d.id, `${d.given_name?.[0] ?? ''}. ${d.family_name}`]))
     const driverCons = new Map((driverRows ?? []).map(d => [d.id, d.constructor_id]))
     const qualiByKey = new Map((qualiRaw ?? []).map(q => [`${q.race_id}:${q.driver_id}`, q.position]))
+    const draftRace = new Map((drafts ?? []).map(d => [d.id, d.race_id]))
+    const picks = (picksRaw ?? []).filter(p => seasonRaceIds.has(draftRace.get(p.draft_id) ?? ''))
+    const finishByKey = new Map((resultsRaw ?? []).map(r => [`${r.race_id}:${r.driver_id}`, r.finish_position]))
+
+    // ---------- Pool scoring per race (THE rule): drop the undrafted drivers,
+    // then rank the drafted field by finishing position (1 = best … N = worst). ----------
+    const poolPointsByDriver = new Map<string, number>()
+    const winsById = new Map<string, number>()
+    for (const r of races ?? []) {
+      const d = (drafts ?? []).find(x => x.race_id === r.id)
+      if (!d) continue
+      const racePicks = picks.filter(p => p.draft_id === d.id)
+      const finish = new Map<string, number>()
+      for (const res of resultsRaw ?? []) if (res.race_id === r.id) finish.set(res.driver_id, res.finish_position)
+      if (finish.size === 0) continue // not raced/scored yet
+      const pts = rankDraftedPoints(racePicks.map(p => p.driver_id), finish)
+      for (const [drv, pt] of pts) poolPointsByDriver.set(drv, (poolPointsByDriver.get(drv) ?? 0) + pt)
+      const totals = new Map<string, number>()
+      for (const p of racePicks) {
+        const pt = pts.get(p.driver_id)
+        if (pt != null) totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + pt)
+      }
+      if (totals.size) {
+        const min = Math.min(...totals.values())
+        for (const [pid, t] of totals) if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
+      }
+    }
 
     // ---------- Driver stats (from our own DB) ----------
     type Fin = { round: number; finish: number; grid: number | null; status: string | null; quali: number | null }
@@ -68,7 +95,7 @@ export async function GET(req: NextRequest) {
         const n = fs.length
         const avgFinish = round1(fs.reduce((s, f) => s + f.finish, 0) / n)
         const last3 = [...fs].sort((a, b) => b.round - a.round).slice(0, 3).map(f => f.finish)
-        const poolPoints = fs.reduce((s, f) => s + driverPoints(f.finish), 0)
+        const poolPoints = poolPointsByDriver.get(id) ?? 0
         // positions gained: prefer real grid, fall back to qualifying position
         const gainable = fs
           .map(f => ({ start: f.grid && f.grid > 0 ? f.grid : f.quali, finish: f.finish }))
@@ -121,10 +148,6 @@ export async function GET(req: NextRequest) {
     }
 
     // ---------- Player stats (from our own picks + results) ----------
-    const draftRace = new Map((drafts ?? []).map(d => [d.id, d.race_id]))
-    const picks = (picksRaw ?? []).filter(p => seasonRaceIds.has(draftRace.get(p.draft_id) ?? ''))
-    const finishByKey = new Map((resultsRaw ?? []).map(r => [`${r.race_id}:${r.driver_id}`, r.finish_position]))
-
     const playerStats = (players ?? []).map(pl => {
       const mine = picks.filter(p => p.player_id === pl.id)
       const freq = new Map<string, number>()
@@ -149,20 +172,6 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const winsById = new Map<string, number>()
-    for (const r of races ?? []) {
-      const d = (drafts ?? []).find(x => x.race_id === r.id)
-      if (!d) continue
-      const totals = new Map<string, number>()
-      let scored = false
-      for (const p of picks.filter(p => p.draft_id === d.id)) {
-        const fin = finishByKey.get(`${r.id}:${p.driver_id}`)
-        if (typeof fin === 'number') { totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + driverPoints(fin)); scored = true }
-      }
-      if (!scored) continue
-      const min = Math.min(...totals.values())
-      for (const [pid, t] of totals) if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
-    }
     for (const ps of playerStats) ps.weeklyWins = winsById.get(ps.id) ?? 0
 
     const leagueFreq = new Map<string, number>()
