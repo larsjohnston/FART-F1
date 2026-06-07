@@ -138,6 +138,8 @@ export async function syncRound(season: number, round: number) {
         race_id: raceId,
         driver_id: r.driverId,
         finish_position: r.finishPosition,
+        grid: r.grid,
+        status: r.status,
       })),
       { onConflict: 'race_id,driver_id' },
     )

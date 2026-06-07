@@ -6,7 +6,7 @@ import { TEAM_COLORS } from '@/lib/f1/teamColors'
 
 interface DriverStat {
   id: string; name: string; team: string; constructorId: string; races: number
-  avgFinish: number; retiredPct: number; posGained: number; last3: number[]; poolPoints: number; trackAvg: number | null
+  avgFinish: number; retiredPct: number | null; posGained: number; last3: number[]; poolPoints: number; trackAvg: number | null
 }
 interface TopPick { name: string; count: number }
 interface PlayerStat {
@@ -73,7 +73,7 @@ export default function StatsPage() {
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 6, fontSize: 12 }}>
                   <Stat label="Avg finish" value={d.avgFinish ? `P${d.avgFinish}` : '–'} />
-                  <Stat label="Retired" value={`${d.retiredPct}%`} />
+                  <Stat label="Retired" value={d.retiredPct != null ? `${d.retiredPct}%` : '–'} />
                   <Stat label="Pos gained" value={(d.posGained > 0 ? '+' : '') + d.posGained} />
                   <Stat label="Form" value={d.last3.map(p => `P${p}`).join(' ') || '–'} />
                   <Stat label="Pool pts" value={String(d.poolPoints)} />

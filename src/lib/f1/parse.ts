@@ -10,6 +10,8 @@ export interface QualifyingRow {
 export interface ResultRow {
   driverId: string
   finishPosition: number
+  grid: number
+  status: string
 }
 
 export interface DriverMeta {
@@ -46,6 +48,8 @@ export function parseResults(j: Race): ResultRow[] {
   return (race(j)?.Results ?? []).map((r: any) => ({
     driverId: r.Driver.driverId as string,
     finishPosition: Number(r.position),
+    grid: Number(r.grid ?? 0),
+    status: (r.status as string) ?? '',
   }))
 }
 
