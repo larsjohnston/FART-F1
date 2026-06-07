@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
 import { loadDraft, makePick, subscribePicks, undoLastPick, type DraftRow } from '@/lib/draft/service'
@@ -9,6 +9,10 @@ import DriverCard, { type DriverVM } from '@/components/DriverCard'
 import OnTheClock from '@/components/OnTheClock'
 import NamePicker from '@/components/NamePicker'
 import { CURRENT_SEASON } from '@/lib/config'
+import { TEAM_COLORS } from '@/lib/f1/teamColors'
+
+interface ChampDriver { id: string; name: string; team: string; constructorId: string; champPos: number; points: number | null }
+interface ChampCons { id: string; name: string; color: string; champPos: number; points: number | null }
 
 export default function DraftPage() {
   const { actingAs } = usePlayer()
@@ -18,6 +22,8 @@ export default function DraftPage() {
   const [players, setPlayers] = useState<Record<string, { name: string; color: string }>>({})
   const [raceName, setRaceName] = useState('')
   const [view, setView] = useState<'players' | 'sequence'>('players')
+  const [champ, setChamp] = useState<{ drivers: ChampDriver[]; constructors: ChampCons[] } | null>(null)
+  const [champView, setChampView] = useState<'drivers' | 'constructors'>('drivers')
 
   const refresh = useCallback(async () => {
     // Active race = latest race currently 'drafting'.
@@ -116,9 +122,57 @@ export default function DraftPage() {
     if (!draft) return
     return subscribePicks(draft.id, refresh)
   }, [draft, refresh])
+  useEffect(() => {
+    fetch(`/api/championship?season=${CURRENT_SEASON}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setChamp({ drivers: d.drivers, constructors: d.constructors }) })
+      .catch(() => {})
+  }, [])
+
+  const tab = (active: boolean): CSSProperties => ({
+    flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, border: '1px solid var(--line)',
+    background: active ? 'var(--accent)' : 'var(--panel-2)', color: '#fff', fontWeight: 700,
+  })
 
   if (!actingAs) return <NamePicker />
-  if (!state || !draft) return <main style={{ padding: 20 }}>No active draft. Commissioner can open one in Admin.</main>
+
+  // No draft open → the Draft tab shows the live F1 championship standings.
+  if (!state || !draft) {
+    return (
+      <main style={{ padding: 16 }}>
+        <h1 style={{ fontSize: 22, margin: 0 }}>F1 Championship</h1>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>No draft open right now — the commissioner opens one in Admin.</p>
+        <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
+          <button onClick={() => setChampView('drivers')} style={tab(champView === 'drivers')}>Drivers</button>
+          <button onClick={() => setChampView('constructors')} style={tab(champView === 'constructors')}>Constructors</button>
+        </div>
+        {!champ ? (
+          <p style={{ color: 'var(--muted)' }}>Loading…</p>
+        ) : champView === 'drivers' ? (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {champ.drivers.map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', border: '1px solid var(--line)', borderLeft: `4px solid ${TEAM_COLORS[d.constructorId] ?? '#888'}`, borderRadius: 10 }}>
+                <span style={{ width: 26, color: d.champPos === 1 ? 'var(--warn)' : 'var(--muted)' }}>{d.champPos}</span>
+                <span style={{ flex: 1, fontWeight: 700 }}>{d.name}</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', marginRight: 10 }}>{d.team}</span>
+                {d.points != null && <span style={{ fontWeight: 700 }}>{d.points}</span>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {champ.constructors.map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', border: '1px solid var(--line)', borderLeft: `4px solid ${c.color}`, borderRadius: 10 }}>
+                <span style={{ width: 26, color: c.champPos === 1 ? 'var(--warn)' : 'var(--muted)' }}>{c.champPos}</span>
+                <span style={{ flex: 1, fontWeight: 700 }}>{c.name}</span>
+                {c.points != null && <span style={{ fontWeight: 700 }}>{c.points}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+    )
+  }
 
   const slot = onClock(state)
   const onClockName = slot ? players[slot.playerId]?.name ?? null : null
