@@ -11,7 +11,7 @@ export default function StandingsPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: players } = await supabase.from('players').select('id,name')
+      const { data: players } = await supabase.from('players').select('id,name,carry_in_points')
       const nameById: Record<string, string> = Object.fromEntries((players ?? []).map(p => [p.id, p.name]))
 
       const { data: races } = await supabase
@@ -20,7 +20,13 @@ export default function StandingsPage() {
         .eq('status', 'complete')
         .eq('season', CURRENT_SEASON)
 
+      // Seed every player's running total with their imported carry-in (points
+      // from races played before the pool moved into the app), then add each
+      // in-app drafted race on top.
       let cumulative: Record<string, number> = {}
+      for (const p of (players ?? []) as { id: string; carry_in_points?: number }[]) {
+        cumulative[p.id] = p.carry_in_points ?? 0
+      }
       for (const r of races ?? []) {
         const { data: draft } = await supabase.from('drafts').select('id').eq('race_id', r.id).maybeSingle()
         if (!draft) continue

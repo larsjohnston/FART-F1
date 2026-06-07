@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:apply": "node scripts/apply-schema.mjs",
+    "db:migrate": "node scripts/apply-migration.mjs",
     "sync:season": "tsx scripts/sync-season.mts"
   },
   "dependencies": {

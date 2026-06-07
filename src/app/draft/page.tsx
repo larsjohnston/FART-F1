@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
-import { loadDraft, makePick, subscribePicks, type DraftRow } from '@/lib/draft/service'
+import { loadDraft, makePick, subscribePicks, undoLastPick, type DraftRow } from '@/lib/draft/service'
 import { onClock } from '@/lib/draft/engine'
 import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
@@ -108,6 +108,16 @@ export default function DraftPage() {
     }
   }
 
+  async function undo() {
+    if (!draft) return
+    await undoLastPick(draft.id)
+    await refresh()
+  }
+
+  const last = state.picks[state.picks.length - 1]
+  const lastDriverName = last ? drivers.find(d => d.id === last.driverId)?.name ?? last.driverId : null
+  const lastPlayerName = last ? players[last.playerId]?.name ?? '' : ''
+
   return (
     <main>
       <div style={{ background: 'linear-gradient(90deg,#E8002D,#a80020)', padding: '12px 14px' }}>
@@ -115,6 +125,17 @@ export default function DraftPage() {
         <div style={{ fontSize: 17, fontWeight: 800 }}>{raceName}</div>
       </div>
       <OnTheClock name={onClockName} yours={yours} />
+      {actingAs.is_commissioner && last && (
+        <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--line)' }}>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Last: {lastPlayerName} → {lastDriverName}</span>
+          <button
+            onClick={undo}
+            style={{ marginLeft: 'auto', background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 10px', fontSize: 12 }}
+          >
+            ↩ Undo
+          </button>
+        </div>
+      )}
       {slot && !yours && (
         <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--warn)' }}>
           It&apos;s {onClockName}&apos;s turn. You can still pick for them if they&apos;re away — it&apos;ll show as

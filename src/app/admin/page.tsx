@@ -26,16 +26,18 @@ export default function AdminPage() {
   const [season, setSeason] = useState('2026')
   const [round, setRound] = useState('6')
   const [order, setOrder] = useState<string[]>([])
+  const [carryIn, setCarryIn] = useState<Record<string, string>>({})
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
     supabase
       .from('players')
-      .select('id,name')
+      .select('id,name,carry_in_points')
       .order('sort_order')
       .then(({ data }) => {
         setPlayers(data ?? [])
         setOrder((data ?? []).map(p => p.id))
+        setCarryIn(Object.fromEntries((data ?? []).map(p => [p.id, String(p.carry_in_points ?? 0)])))
       })
   }, [])
 
@@ -97,6 +99,22 @@ export default function AdminPage() {
     setMsg('Undid last pick.')
   }
 
+  async function saveCarryIn() {
+    setMsg('Saving carry-in points…')
+    for (const p of players) {
+      const n = Number(carryIn[p.id] ?? 0)
+      const { error } = await supabase
+        .from('players')
+        .update({ carry_in_points: Number.isFinite(n) ? Math.round(n) : 0 })
+        .eq('id', p.id)
+      if (error) {
+        setMsg(`Save failed: ${error.message}`)
+        return
+      }
+    }
+    setMsg('Carry-in points saved. Check Standings.')
+  }
+
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
     if (j < 0 || j >= order.length) return
@@ -121,6 +139,24 @@ export default function AdminPage() {
         <div style={{ marginTop: 8 }}>
           <button onClick={sync} style={btn}>Sync F1 data</button>
         </div>
+      </section>
+
+      <section style={{ marginTop: 16 }}>
+        <h3>Carry-in points (imported totals after race 5)</h3>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+          Each player&apos;s running total before the pool moved into the app. Added on top of races drafted here.
+        </p>
+        {players.map(p => (
+          <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6 }}>
+            <span style={{ flex: 1 }}>{p.name}</span>
+            <input
+              value={carryIn[p.id] ?? ''}
+              onChange={e => setCarryIn({ ...carryIn, [p.id]: e.target.value })}
+              style={inp}
+            />
+          </div>
+        ))}
+        <button onClick={saveCarryIn} style={{ ...btn, marginTop: 8 }}>Save carry-in points</button>
       </section>
 
       <section style={{ marginTop: 16 }}>
