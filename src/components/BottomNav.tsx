@@ -6,6 +6,7 @@ const TABS = [
   { href: '/draft', label: 'Draft' },
   { href: '/standings', label: 'Standings' },
   { href: '/stats', label: 'Stats' },
+  { href: '/history', label: 'History' },
   { href: '/admin', label: 'Commissioner' },
 ]
 
@@ -17,8 +18,8 @@ export default function BottomNav() {
       {TABS.map(t => {
         const active = path?.startsWith(t.href) ?? false
         return (
-          <Link key={t.href} href={t.href} style={{ flex: 1, textAlign: 'center', padding: '11px 0',
-            fontSize: 12, color: active ? 'var(--text)' : 'var(--muted)',
+          <Link key={t.href} href={t.href} style={{ flex: 1, textAlign: 'center', padding: '11px 2px',
+            fontSize: 11, color: active ? 'var(--text)' : 'var(--muted)', lineHeight: 1.1,
             borderTop: active ? '2px solid var(--accent)' : '2px solid transparent', textDecoration: 'none' }}>
             {t.label}
           </Link>
