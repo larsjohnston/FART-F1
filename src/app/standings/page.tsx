@@ -186,14 +186,17 @@ export default function StandingsPage() {
 
       {view === 'season' ? (
         <>
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>Lowest total wins (golf scoring). 🏆 = weekly win · 🍕 = buys dinner.</p>
+          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>
+            Lowest total wins (golf scoring). 🏆 = weekly win ·{' '}
+            <img src="/boston-pizza.png" alt="" width={14} height={14} style={{ verticalAlign: 'text-bottom' }} /> = Beer Tab.
+          </p>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             {seasonRows.map((r, i) => (
               <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
                 <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
-                {/* 3rd & 4th place buy dinner for 1st & 2nd. */}
+                {/* 3rd & 4th place cover the beer tab for 1st & 2nd. */}
                 {i >= 2 && (
-                  <img src="/boston-pizza.png" alt="Buys dinner (Boston Pizza)" title="Buys dinner — Boston Pizza" width={22} height={22} style={{ flex: '0 0 auto' }} />
+                  <img src="/boston-pizza.png" alt="Beer Tab" title="Beer Tab" width={22} height={22} style={{ flex: '0 0 auto' }} />
                 )}
                 <span style={{ fontWeight: 700 }}>{r.name}</span>
                 {/* A trophy for each weekly win. */}
