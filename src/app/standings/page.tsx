@@ -186,9 +186,11 @@ export default function StandingsPage() {
 
       {view === 'season' ? (
         <>
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>
-            Lowest total wins (golf scoring). 🏆 = weekly win ·{' '}
-            <img src="/boston-pizza.png" alt="" width={14} height={14} style={{ verticalAlign: 'text-bottom' }} /> = Beer Tab.
+          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span>🏆 = weekly win</span>
+            <span>·</span>
+            <img src="/boston-pizza.png" alt="" width={16} height={16} style={{ flex: '0 0 auto' }} />
+            <span>= Beer Tab</span>
           </p>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             {seasonRows.map((r, i) => (
