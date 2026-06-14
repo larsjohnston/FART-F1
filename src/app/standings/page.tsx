@@ -191,11 +191,11 @@ export default function StandingsPage() {
             {seasonRows.map((r, i) => (
               <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
                 <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
-                <span style={{ fontWeight: 700 }}>{r.name}</span>
                 {/* 3rd & 4th place buy dinner for 1st & 2nd. */}
                 {i >= 2 && (
-                  <img src="/boston-pizza.svg" alt="Buys dinner (Boston Pizza)" title="Buys dinner — Boston Pizza" width={18} height={18} />
+                  <img src="/boston-pizza.png" alt="Buys dinner (Boston Pizza)" title="Buys dinner — Boston Pizza" width={22} height={22} style={{ flex: '0 0 auto' }} />
                 )}
+                <span style={{ fontWeight: 700 }}>{r.name}</span>
                 {/* A trophy for each weekly win. */}
                 {r.weeklyWins > 0 && (
                   <span style={{ flex: 1, fontSize: 13, letterSpacing: 1, lineHeight: 1.4, wordBreak: 'break-word' }}>
