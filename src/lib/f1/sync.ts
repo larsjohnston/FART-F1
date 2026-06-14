@@ -1,5 +1,4 @@
 import { serverClient } from '@/lib/supabase/server'
-import { CURRENT_SEASON } from '@/lib/config'
 import {
   parseQualifying,
   parseResults,
@@ -218,22 +217,4 @@ export async function syncRound(season: number, round: number) {
     qualified: !!qualiJson,
     drivers: drivers.length,
   }
-}
-
-/** Sync the most recent race on the calendar that has already happened — the one
- *  a scheduler (cron) wants kept fresh so provisional results land at the flag
- *  and the official classification replaces them once it posts, hands-free. */
-export async function syncCurrentRound() {
-  const db = serverClient()
-  const today = new Date().toISOString().slice(0, 10)
-  const { data } = await db
-    .from('races')
-    .select('round')
-    .eq('season', CURRENT_SEASON)
-    .lte('date', today)
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (!data) return { skipped: true as const }
-  return syncRound(CURRENT_SEASON, data.round)
 }

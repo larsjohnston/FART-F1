@@ -25,7 +25,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=    # anon public key (JWT, ~200+ chars)
 SUPABASE_SERVICE_ROLE_KEY=        # service_role key (JWT, ~200+ chars) — server only
 SUPABASE_DB_URL=                  # Postgres connection string for migrations + sync script
 F1_SEASON=2024
-CRON_SECRET=                      # random token guarding the GET /api/sync cron (see Scheduled sync)
 ```
 
 ## One-time setup
@@ -37,17 +36,9 @@ npm run sync:season    # fetches Jolpica + OpenF1 for every round of F1_SEASON, 
 
 `db:apply` is idempotent (CREATE IF NOT EXISTS, ON CONFLICT DO NOTHING). `sync:season` runs through round 24, breaking on the first empty round.
 
-## Scheduled sync
+## Syncing results
 
-`vercel.json` registers a cron that hits `GET /api/sync` every 5 minutes. It re-syncs the most recent race that has already happened, so results appear hands-free. Note OpenF1 keeps a session on its **paid real-time tier until ~30 min after it ends**, so the **provisional** finishing order shows up roughly half an hour after the flag (not immediately); Jolpica's **official** classification (penalties applied) then overwrites it the moment it posts.
-
-Set `CRON_SECRET` in the hosting env (Vercel → Project → Settings → Environment Variables). Vercel sends it automatically as `Authorization: Bearer <CRON_SECRET>`, and the route rejects any GET without it. Generate one with:
-
-```bash
-openssl rand -hex 32
-```
-
-If `CRON_SECRET` is unset the route stays open (fine for local dev). The commissioner's manual **Sync** button on `/admin` still works regardless.
+Results are synced **manually** — there is no scheduled or automatic sync. The commissioner hits the **Sync** button on `/admin` (which `POST`s to `/api/sync`) to refresh a round. OpenF1 keeps a session on its **paid real-time tier until ~30 min after it ends**, so syncing within that window stores the **provisional** finishing order; syncing again once Jolpica's **official** classification posts (penalties applied) overwrites it.
 
 ## How it works
 
