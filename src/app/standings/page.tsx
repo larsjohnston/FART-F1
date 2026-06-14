@@ -32,13 +32,22 @@ export default function StandingsPage() {
     for (const p of pl) cumulative[p.id] = 0
     for (const r of prior ?? []) cumulative[r.player_id] = (cumulative[r.player_id] ?? 0) + r.points
 
-    const { data: completeRaces } = await supabase
-      .from('races').select('id').eq('status', 'complete').eq('season', CURRENT_SEASON)
-    for (const r of completeRaces ?? []) {
-      const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', r.id).maybeSingle()
+    // Score every race that has results stored — provisional or official — so the
+    // championship reflects temporary results the moment they sync and then self-
+    // corrects when the official classification overwrites them. (Previously this
+    // only counted races the commissioner had marked status='complete'.)
+    const { data: seasonRaceRows } = await supabase
+      .from('races').select('id').eq('season', CURRENT_SEASON)
+    const seasonRaceIds = (seasonRaceRows ?? []).map(r => r.id)
+    const { data: resultRaceRows } = seasonRaceIds.length
+      ? await supabase.from('results').select('race_id').in('race_id', seasonRaceIds)
+      : { data: [] as { race_id: string }[] }
+    const racesWithResults = [...new Set((resultRaceRows ?? []).map(r => r.race_id))]
+    for (const raceId of racesWithResults) {
+      const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', raceId).maybeSingle()
       if (!draft || draft.historic) continue
       const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
-      const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', r.id)
+      const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', raceId)
       const byPlayer: Record<string, string[]> = {}
       for (const p of picks ?? []) (byPlayer[p.player_id] ??= []).push(p.driver_id)
       cumulative = addToCumulative(
@@ -211,7 +220,24 @@ export default function StandingsPage() {
                     ? 'Provisional finishing order — official result (with any penalties) replaces it once posted.'
                     : 'Points for this race. Lowest weekly total wins the week.'}
               </p>
-              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+
+              {/* Weekly leaderboard: the four players + their weekly points, 🏆 on
+                  the lowest score (golf scoring). Ties share the trophy. */}
+              {week.rows.length > 0 && (
+                <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+                  {week.rows.map((r, i) => (
+                    <div key={`lead-${r.name}`} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
+                      <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
+                      <span style={{ flex: 1, fontWeight: 700 }}>
+                        {r.name}{r.points === week.rows[0].points ? ' 🏆' : ''}
+                      </span>
+                      <span style={{ fontWeight: 800 }}>{r.points}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
                 {week.rows.map((r, i) => (
                   <div key={r.name} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel)', borderLeft: `4px solid ${r.color}` }}>
