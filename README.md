@@ -39,7 +39,7 @@ npm run sync:season    # fetches Jolpica + OpenF1 for every round of F1_SEASON, 
 
 ## Scheduled sync
 
-`vercel.json` registers a cron that hits `GET /api/sync` every 15 minutes. It re-syncs the most recent race that has already happened, so results appear hands-free: OpenF1's **provisional** finishing order lands within minutes of the flag, then Jolpica's **official** classification (penalties applied) overwrites it the moment it posts.
+`vercel.json` registers a cron that hits `GET /api/sync` every 5 minutes. It re-syncs the most recent race that has already happened, so results appear hands-free. Note OpenF1 keeps a session on its **paid real-time tier until ~30 min after it ends**, so the **provisional** finishing order shows up roughly half an hour after the flag (not immediately); Jolpica's **official** classification (penalties applied) then overwrites it the moment it posts.
 
 Set `CRON_SECRET` in the hosting env (Vercel → Project → Settings → Environment Variables). Vercel sends it automatically as `Authorization: Bearer <CRON_SECRET>`, and the route rejects any GET without it. Generate one with:
 
