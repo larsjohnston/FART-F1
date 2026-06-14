@@ -20,8 +20,8 @@ const shortName = (n: string) => n.replace(/\s+Grand Prix$/i, '')
 export default function AdminPage() {
   const { actingAs } = usePlayer()
   const [season, setSeason] = useState('2026')
-  const [races, setRaces] = useState<{ round: number; name: string }[]>([])
-  const [round, setRound] = useState('6')
+  const [races, setRaces] = useState<{ round: number; name: string; date: string | null }[]>([])
+  const [round, setRound] = useState('')
   const [draftTiming, setDraftTiming] = useState<'before' | 'after'>('after')
   const [msg, setMsg] = useState('')
 
@@ -31,13 +31,18 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    supabase.from('races').select('round,name').eq('season', Number(season)).order('round')
+    supabase.from('races').select('round,name,date').eq('season', Number(season)).order('round')
       .then(({ data }) => {
         const rs = data ?? []
         setRaces(rs)
-        if (rs.length && !rs.some(r => String(r.round) === round)) setRound(String(rs[rs.length - 1].round))
+        if (!rs.length) return
+        // Default to the current race: the most recent one that has already
+        // happened (date on/before today), or the first race if none have yet.
+        const today = new Date().toISOString().slice(0, 10)
+        const happened = rs.filter(r => r.date && r.date <= today)
+        const current = happened.length ? happened[happened.length - 1] : rs[0]
+        setRound(String(current.round))
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season])
 
   if (!actingAs) return <NamePicker />
