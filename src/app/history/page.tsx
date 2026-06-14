@@ -70,7 +70,7 @@ export default function HistoryPage() {
                   )
                 })}
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 12 }}>🏆 = season title (completed seasons). Current season excluded until it finishes.</p>
+              <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 12 }}>🏆 = Season Titles</p>
             </>
           ) : (
             <SeasonView season={data.bySeason[String(view)]} players={data.players} year={view} />
