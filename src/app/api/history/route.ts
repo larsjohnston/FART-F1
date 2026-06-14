@@ -57,6 +57,24 @@ async function liveSeasonBlock(db: any, pl: any[], season: number): Promise<Seas
   return { standings, races, complete: false }
 }
 
+/** Current-season drafted picks (as driver display names) from the live tables,
+ *  for the career most-drafted stat. Every draft for the season counts —
+ *  including backfilled (historic) early rounds — since they're still real picks. */
+async function liveSeasonPicks(db: any, season: number): Promise<{ player_id: string; driver: string }[]> {
+  const { data: races } = await db.from('races').select('id').eq('season', season)
+  const raceIds = (races ?? []).map((r: any) => r.id as string)
+  if (!raceIds.length) return []
+  const { data: drafts } = await db.from('drafts').select('id').in('race_id', raceIds)
+  const draftIds = (drafts ?? []).map((d: any) => d.id as string)
+  if (!draftIds.length) return []
+  const [{ data: picks }, { data: drv }] = await Promise.all([
+    db.from('picks').select('player_id,driver_id').in('draft_id', draftIds),
+    db.from('drivers').select('id,given_name,family_name'),
+  ])
+  const name = new Map<string, string>((drv ?? []).map((d: any) => [d.id, `${d.given_name ?? ''} ${d.family_name ?? ''}`.trim()]))
+  return (picks ?? []).map((p: any) => ({ player_id: p.player_id, driver: name.get(p.driver_id) ?? p.driver_id }))
+}
+
 /** Aggregates the imported multi-season archive (2022-2026) for the History page:
  *  per-season standings + race-by-race points, and all-time career totals,
  *  titles, and each player's most-drafted driver. The current (in-progress)
@@ -67,7 +85,7 @@ export async function GET() {
   const [{ data: players }, { data: rp }, { data: picks }] = await Promise.all([
     db.from('players').select('id,name,color').order('sort_order'),
     db.from('archive_race_points').select('season,race_no,player_id,points'),
-    db.from('archive_picks').select('player_id,driver'),
+    db.from('archive_picks').select('season,player_id,driver'),
   ])
   const pl = players ?? []
   // Show every archived season plus the current one (which may have no archive rows yet).
@@ -107,8 +125,19 @@ export async function GET() {
       for (const r of st) if (r.points === min) titles[r.id] += 1
     }
   }
+  // Career most-drafted: historical picks from the archive (past seasons) plus
+  // the live current-season picks, so 2026 reflects the real draft rather than
+  // the frozen spreadsheet import. Live driver names use the full "Given Family"
+  // form to line up with the archive's spreadsheet driver names.
+  const livePicks = await liveSeasonPicks(db, CURRENT_SEASON)
   const dc: Record<string, Record<string, number>> = {}
-  for (const pk of picks ?? []) { (dc[pk.player_id] ??= {})[pk.driver] = (dc[pk.player_id][pk.driver] ?? 0) + 1 }
+  for (const pk of picks ?? []) {
+    if (pk.season === CURRENT_SEASON) continue // superseded by live current-season picks
+    ;(dc[pk.player_id] ??= {})[pk.driver] = (dc[pk.player_id][pk.driver] ?? 0) + 1
+  }
+  for (const pk of livePicks) {
+    ;(dc[pk.player_id] ??= {})[pk.driver] = (dc[pk.player_id][pk.driver] ?? 0) + 1
+  }
   const favorite: Record<string, { driver: string; count: number }> = {}
   for (const p of pl) {
     const top = Object.entries(dc[p.id] ?? {}).sort((a, b) => b[1] - a[1])[0]
