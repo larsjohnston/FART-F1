@@ -7,7 +7,7 @@ import { CURRENT_SEASON } from '@/lib/config'
 interface SeasonRow { name: string; color: string; points: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
 interface WeekRow { name: string; color: string; points: number; drivers: WeekDriver[] }
-interface Week { raceName: string; hasResults: boolean; rows: WeekRow[] }
+interface Week { raceName: string; hasResults: boolean; provisional: boolean; rows: WeekRow[] }
 interface WeekOption { round: number; name: string }
 
 export default function StandingsPage() {
@@ -84,7 +84,7 @@ export default function StandingsPage() {
     }
 
     if (picks.length) {
-      const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', race.id)
+      const { data: results } = await supabase.from('results').select('driver_id,finish_position,provisional').eq('race_id', race.id)
       const { data: quali } = await supabase.from('qualifying').select('driver_id,position').eq('race_id', race.id)
       const { data: drv } = await supabase.from('drivers').select('id,given_name,family_name,constructor_id')
       const { data: cons } = await supabase.from('constructors').select('id,color')
@@ -94,6 +94,7 @@ export default function StandingsPage() {
         teamColor: consColor.get(d.constructor_id) ?? '#888',
       }]))
       const hasResults = (results ?? []).length > 0
+      const provisional = (results ?? []).some(r => r.provisional)
       const posByDriver = new Map<string, number>()
       if (hasResults) for (const r of results ?? []) posByDriver.set(r.driver_id, r.finish_position)
       else for (const q of quali ?? []) posByDriver.set(q.driver_id, q.position)
@@ -115,7 +116,7 @@ export default function StandingsPage() {
           drivers: drivers.sort((a, b) => a.pos - b.pos),
         }))
         .sort((a, b) => a.points - b.points)
-      setWeek({ raceName: race.name, hasResults, rows })
+      setWeek({ raceName: race.name, hasResults, provisional, rows })
       return
     }
 
@@ -126,10 +127,10 @@ export default function StandingsPage() {
       const rows = pl
         .map(p => ({ name: p.name, color: p.color, points: pp.find(x => x.player_id === p.id)?.points ?? 0, drivers: [] as WeekDriver[] }))
         .sort((a, b) => a.points - b.points)
-      setWeek({ raceName: race.name, hasResults: true, rows })
+      setWeek({ raceName: race.name, hasResults: true, provisional: false, rows })
       return
     }
-    setWeek({ raceName: race.name, hasResults: false, rows: [] })
+    setWeek({ raceName: race.name, hasResults: false, provisional: false, rows: [] })
   }, [])
 
   useEffect(() => { loadSeasonAndOptions() }, [loadSeasonAndOptions])
@@ -199,12 +200,16 @@ export default function StandingsPage() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <h2 style={{ fontSize: 18, margin: 0 }}>{week.raceName}</h2>
-                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 20, background: week.hasResults ? '#10331e' : '#3a2f10', color: week.hasResults ? 'var(--live)' : 'var(--warn)' }}>
-                  {week.hasResults ? '● RESULTS IN' : '◌ PROJECTED'}
+                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 20, background: !week.hasResults ? '#3a2f10' : week.provisional ? '#33260f' : '#10331e', color: !week.hasResults ? 'var(--warn)' : week.provisional ? 'var(--warn)' : 'var(--live)' }}>
+                  {!week.hasResults ? '◌ PROJECTED' : week.provisional ? '◔ PROVISIONAL' : '● RESULTS IN'}
                 </span>
               </div>
               <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
-                {week.hasResults ? 'Points for this race. Lowest weekly total wins the week.' : 'Projected from the qualifying grid until results are in. Updates live.'}
+                {!week.hasResults
+                  ? 'Projected from the qualifying grid until results are in. Updates live.'
+                  : week.provisional
+                    ? 'Provisional finishing order — official result (with any penalties) replaces it once posted.'
+                    : 'Points for this race. Lowest weekly total wins the week.'}
               </p>
               <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
                 {week.rows.map((r, i) => (

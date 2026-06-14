@@ -51,6 +51,7 @@ export default function AdminPage() {
     }).then(r => r.json())
     setMsg(
       !res.ok ? `Error: ${res.error}`
+        : res.provisional ? `Provisional results synced — official will replace them once posted.`
         : res.raced ? `Results synced — ${res.drivers} drivers.`
         : res.qualified ? `Qualifying synced — ${res.drivers} drivers.`
         : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',

@@ -1,13 +1,17 @@
 import { serverClient } from '@/lib/supabase/server'
+import { CURRENT_SEASON } from '@/lib/config'
 import {
   parseQualifying,
   parseResults,
   parseDriversFromResults,
   parseOpenF1,
+  openF1NumberToId,
+  parseOpenF1Results,
 } from './parse'
 import { TEAM_COLORS } from './teamColors'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
+const OPENF1 = 'https://api.openf1.org/v1'
 
 async function getJSON(url: string) {
   const res = await fetch(url, { cache: 'no-store' })
@@ -47,16 +51,38 @@ export async function syncRound(season: number, round: number) {
   }
 
   // OpenF1 supplies driver headshots + live livery colors, but it is cosmetic
-  // and locks down to paid users *during a live session* (i.e. on race day, the
-  // one day this app is used). Never let it block the core Jolpica draft data —
-  // cards fall back to colored initials, and TEAM_COLORS covers team colors.
+  // and locks down to paid users *during a live session* (i.e. while the race is
+  // running). Never let it block the core Jolpica draft data — cards fall back to
+  // colored initials, and TEAM_COLORS covers team colors.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let openf1Raw: any[] = []
   let openf1: Record<string, { headshotUrl: string; teamColour: string; teamName: string }> = {}
   try {
-    openf1 = parseOpenF1(
-      await getJSON('https://api.openf1.org/v1/drivers?session_key=latest'),
-    )
+    openf1Raw = await getJSON(`${OPENF1}/drivers?session_key=latest`)
+    openf1 = parseOpenF1(openf1Raw)
   } catch {
     // headshots/colors unavailable this run
+  }
+
+  // OpenF1 publishes the provisional finishing order at the flag — minutes ahead
+  // of Jolpica's official classification. Fetch the latest session + its result,
+  // but only trust it if that session is THIS round's race (matched by date), so
+  // a stale "latest" session can never bleed onto the wrong round. Once the
+  // session has ended the result drops into OpenF1's free tier; tolerate any
+  // failure (paid lock mid-race, outage) and fall back to the official path.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let openf1Result: any[] = []
+  let openf1MatchesRound = false
+  try {
+    const sessions = await getJSON(`${OPENF1}/sessions?session_key=latest`)
+    const sess = Array.isArray(sessions) ? sessions[0] : null
+    const isRace = sess?.session_type === 'Race' || sess?.session_name === 'Race'
+    if (sess && isRace && sess.year === season && sess.date_start?.slice(0, 10) === raceMeta.date) {
+      openf1MatchesRound = true
+      openf1Result = await getJSON(`${OPENF1}/session_result?session_key=latest`)
+    }
+  } catch {
+    // provisional feed unavailable this run
   }
 
   // Pulling results does NOT auto-score the race: preserve an in-progress
@@ -153,21 +179,61 @@ export async function syncRound(season: number, round: number) {
     if (qErr) throw new Error(`qualifying upsert failed: ${qErr.message}`)
   }
 
-  // Results rows (if raced)
+  // Results rows: Jolpica's official classification is authoritative and wins
+  // the moment it posts (it carries any post-race penalties). Until then, fall
+  // back to OpenF1's provisional order — published at the flag — so standings
+  // appear fast; the next sync overwrites it once the official result lands.
+  const codeToId = Object.fromEntries(drivers.map((d) => [d.code, d.id]))
+  const numberToId = openF1NumberToId(openf1Raw, codeToId)
+  const provisionalRows = openf1MatchesRound ? parseOpenF1Results(openf1Result, numberToId) : []
+
+  let writeRows: ReturnType<typeof parseResults> | null = null
+  let provisional = false
   if (resultsJson) {
-    const rr = parseResults(resultsJson)
+    writeRows = parseResults(resultsJson) // official — penalties applied
+  } else if (provisionalRows.length) {
+    writeRows = provisionalRows // provisional — fast, until the official posts
+    provisional = true
+  }
+
+  if (writeRows?.length) {
     const { error: resErr } = await db.from('results').upsert(
-      rr.map((r) => ({
+      writeRows.map((r) => ({
         race_id: raceId,
         driver_id: r.driverId,
         finish_position: r.finishPosition,
         grid: r.grid,
         status: r.status,
+        provisional,
       })),
       { onConflict: 'race_id,driver_id' },
     )
     if (resErr) throw new Error(`results upsert failed: ${resErr.message}`)
   }
 
-  return { raceId, raced: !!resultsJson, qualified: !!qualiJson, drivers: drivers.length }
+  return {
+    raceId,
+    raced: !!writeRows?.length,
+    provisional,
+    qualified: !!qualiJson,
+    drivers: drivers.length,
+  }
+}
+
+/** Sync the most recent race on the calendar that has already happened — the one
+ *  a scheduler (cron) wants kept fresh so provisional results land at the flag
+ *  and the official classification replaces them once it posts, hands-free. */
+export async function syncCurrentRound() {
+  const db = serverClient()
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await db
+    .from('races')
+    .select('round')
+    .eq('season', CURRENT_SEASON)
+    .lte('date', today)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return { skipped: true as const }
+  return syncRound(CURRENT_SEASON, data.round)
 }
