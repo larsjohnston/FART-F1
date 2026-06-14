@@ -1,0 +1,7 @@
+[
+  { "position": 1, "driver_number": 1, "dnf": false, "dns": false, "dsq": false, "number_of_laps": 57 },
+  { "position": 2, "driver_number": 3, "dnf": false, "dns": false, "dsq": false, "number_of_laps": 57 },
+  { "position": 18, "driver_number": 16, "dnf": true, "dns": false, "dsq": false, "number_of_laps": 12 },
+  { "position": null, "driver_number": 44, "dnf": false, "dns": true, "dsq": false, "number_of_laps": 0 },
+  { "position": 5, "driver_number": 999, "dnf": false, "dns": false, "dsq": false, "number_of_laps": 57 }
+]

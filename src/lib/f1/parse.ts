@@ -88,3 +88,42 @@ export function parseOpenF1(arr: any[]): Record<string, OpenF1Entry> {
   }
   return out
 }
+
+/** Map OpenF1's `driver_number` -> Jolpica driverId, bridging via the shared
+ *  three-letter code (OpenF1 `name_acronym` == our drivers.code). `codeToId`
+ *  comes from the round's own driver list, so a number we can't resolve to a
+ *  drafted driver is simply dropped. */
+export function openF1NumberToId(
+  openf1Drivers: any[],
+  codeToId: Record<string, string>,
+): Record<number, string> {
+  const out: Record<number, string> = {}
+  for (const d of openf1Drivers ?? []) {
+    const id = codeToId[d.name_acronym]
+    if (id && d.driver_number != null) out[Number(d.driver_number)] = id
+  }
+  return out
+}
+
+/** Provisional finishing order from OpenF1's `session_result` (published at the
+ *  flag, before Jolpica's official classification). Skips entries we can't map
+ *  to a driverId or that have no classified position. No grid is available from
+ *  this feed — the official sync backfills it. */
+export function parseOpenF1Results(
+  sessionResult: any[],
+  numberToId: Record<number, string>,
+): ResultRow[] {
+  const rows: ResultRow[] = []
+  for (const r of sessionResult ?? []) {
+    const driverId = numberToId[Number(r.driver_number)]
+    const finishPosition = Number(r.position)
+    if (!driverId || !Number.isFinite(finishPosition) || finishPosition <= 0) continue
+    rows.push({
+      driverId,
+      finishPosition,
+      grid: 0,
+      status: r.dsq ? 'Disqualified' : r.dns ? 'Did not start' : r.dnf ? 'Retired' : 'Finished',
+    })
+  }
+  return rows
+}
