@@ -88,13 +88,21 @@ export default function HistoryPage() {
               {/* ---------------- All-Time fun stats ---------------- */}
               <h3 style={{ fontSize: 15, marginTop: 22 }}>Weekly wins (career)</h3>
               <div style={{ display: 'grid', gap: 4 }}>
-                {data.stats.weeklyWins.map(r => (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
-                    <span style={{ width: 90, fontWeight: 700, color: r.color }}>{r.name}</span>
-                    <span style={{ flex: 1 }}>{r.wins > 0 ? '🏆'.repeat(Math.min(r.wins, 12)) : ''}</span>
-                    <span style={{ color: 'var(--muted)' }}>{r.wins}</span>
-                  </div>
-                ))}
+                {(() => {
+                  // Trophies scale to the leader so the rows reflect relative wins
+                  // instead of all maxing out. The exact count sits on the right.
+                  const maxWins = Math.max(1, ...data.stats.weeklyWins.map(r => r.wins))
+                  return data.stats.weeklyWins.map(r => {
+                    const n = r.wins > 0 ? Math.max(1, Math.round((r.wins / maxWins) * 10)) : 0
+                    return (
+                      <div key={r.id} style={{ display: 'flex', alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
+                        <span style={{ width: 90, fontWeight: 700, color: r.color }}>{r.name}</span>
+                        <span style={{ flex: 1, letterSpacing: 1 }}>{'🏆'.repeat(n)}</span>
+                        <span style={{ color: 'var(--muted)', fontWeight: 700 }}>{r.wins}</span>
+                      </div>
+                    )
+                  })
+                })()}
               </div>
 
               <h3 style={{ fontSize: 15, marginTop: 18 }}>Records</h3>
