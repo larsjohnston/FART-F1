@@ -208,7 +208,7 @@ export default function StandingsPage() {
                 {!week.hasResults
                   ? 'Projected from the qualifying grid until results are in. Updates live.'
                   : week.provisional
-                    ? 'Provisional finishing order — official result (with any penalties) replaces it within the hour.'
+                    ? 'Provisional finishing order — official result (with any penalties) replaces it once posted.'
                     : 'Points for this race. Lowest weekly total wins the week.'}
               </p>
               <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>

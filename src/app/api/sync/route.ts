@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
 }
 
 // Scheduler entrypoint (Vercel cron / any GET): keep the latest race fresh so
-// provisional results land at the flag and the official result replaces them
-// within the hour, without anyone pressing Sync. Guarded by CRON_SECRET when set
-// (Vercel sends it automatically as a Bearer token).
+// provisional results land at the flag and the official result replaces them as
+// soon as it posts, without anyone pressing Sync. Guarded by CRON_SECRET when
+// set (Vercel sends it automatically as a Bearer token).
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {

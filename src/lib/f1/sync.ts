@@ -13,10 +13,6 @@ import { TEAM_COLORS } from './teamColors'
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
 const OPENF1 = 'https://api.openf1.org/v1'
 
-/** Official results are authoritative once posted; until then (and never past
- *  this window) we may show OpenF1's provisional order. */
-const PROVISIONAL_WINDOW_MIN = 60
-
 async function getJSON(url: string) {
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`)
@@ -76,7 +72,6 @@ export async function syncRound(season: number, round: number) {
   // failure (paid lock mid-race, outage) and fall back to the official path.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let openf1Result: any[] = []
-  let openf1RaceEndMs: number | null = null
   let openf1MatchesRound = false
   try {
     const sessions = await getJSON(`${OPENF1}/sessions?session_key=latest`)
@@ -84,7 +79,6 @@ export async function syncRound(season: number, round: number) {
     const isRace = sess?.session_type === 'Race' || sess?.session_name === 'Race'
     if (sess && isRace && sess.year === season && sess.date_start?.slice(0, 10) === raceMeta.date) {
       openf1MatchesRound = true
-      openf1RaceEndMs = sess.date_end ? Date.parse(sess.date_end) : null
       openf1Result = await getJSON(`${OPENF1}/session_result?session_key=latest`)
     }
   } catch {
@@ -185,28 +179,21 @@ export async function syncRound(season: number, round: number) {
     if (qErr) throw new Error(`qualifying upsert failed: ${qErr.message}`)
   }
 
-  // Results rows: prefer Jolpica's official classification; until it posts (and
-  // only within the first hour after the flag) fall back to OpenF1's provisional
-  // order so standings appear fast. Past the window, official is required and
-  // overwrites any provisional rows already stored.
+  // Results rows: Jolpica's official classification is authoritative and wins
+  // the moment it posts (it carries any post-race penalties). Until then, fall
+  // back to OpenF1's provisional order — published at the flag — so standings
+  // appear fast; the next sync overwrites it once the official result lands.
   const codeToId = Object.fromEntries(drivers.map((d) => [d.code, d.id]))
   const numberToId = openF1NumberToId(openf1Raw, codeToId)
   const provisionalRows = openf1MatchesRound ? parseOpenF1Results(openf1Result, numberToId) : []
 
-  const raceEndMs =
-    openf1RaceEndMs ??
-    (raceMeta.time ? Date.parse(`${raceMeta.date}T${raceMeta.time}`) + 2 * 60 * 60 * 1000 : null)
-  const minsSinceEnd = raceEndMs == null ? Infinity : (Date.now() - raceEndMs) / 60000
-
   let writeRows: ReturnType<typeof parseResults> | null = null
   let provisional = false
-  if (resultsJson && (minsSinceEnd >= PROVISIONAL_WINDOW_MIN || !provisionalRows.length)) {
+  if (resultsJson) {
     writeRows = parseResults(resultsJson) // official — penalties applied
   } else if (provisionalRows.length) {
-    writeRows = provisionalRows // provisional — fast, may shift on penalties
+    writeRows = provisionalRows // provisional — fast, until the official posts
     provisional = true
-  } else if (resultsJson) {
-    writeRows = parseResults(resultsJson)
   }
 
   if (writeRows?.length) {
@@ -235,7 +222,7 @@ export async function syncRound(season: number, round: number) {
 
 /** Sync the most recent race on the calendar that has already happened — the one
  *  a scheduler (cron) wants kept fresh so provisional results land at the flag
- *  and the official classification replaces them within the hour, hands-free. */
+ *  and the official classification replaces them once it posts, hands-free. */
 export async function syncCurrentRound() {
   const db = serverClient()
   const today = new Date().toISOString().slice(0, 10)
