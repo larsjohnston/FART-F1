@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON } from '@/lib/config'
 
-interface SeasonRow { name: string; color: string; points: number }
+interface SeasonRow { id: string; name: string; color: string; points: number; weeklyWins: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
 interface WeekRow { name: string; color: string; points: number; drivers: WeekDriver[] }
 interface Week { raceName: string; hasResults: boolean; provisional: boolean; rows: WeekRow[] }
@@ -27,10 +27,24 @@ export default function StandingsPage() {
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
 
     const { data: prior } = await supabase
-      .from('prior_race_points').select('player_id,points').eq('season', CURRENT_SEASON)
+      .from('prior_race_points').select('player_id,round,points').eq('season', CURRENT_SEASON)
     let cumulative: Record<string, number> = {}
     for (const p of pl) cumulative[p.id] = 0
     for (const r of prior ?? []) cumulative[r.player_id] = (cumulative[r.player_id] ?? 0) + r.points
+
+    // Weekly wins: the lowest weekly total takes the week (golf scoring); ties
+    // share it. Counted across entered prior rounds and every scored race.
+    const weeklyWins: Record<string, number> = {}
+    for (const p of pl) weeklyWins[p.id] = 0
+    const awardWeek = (weekPts: Record<string, number>) => {
+      const vals = Object.values(weekPts)
+      if (!vals.length) return
+      const min = Math.min(...vals)
+      for (const [id, pts] of Object.entries(weekPts)) if (pts === min) weeklyWins[id] = (weeklyWins[id] ?? 0) + 1
+    }
+    const priorByRound: Record<number, Record<string, number>> = {}
+    for (const r of prior ?? []) (priorByRound[r.round] ??= {})[r.player_id] = (priorByRound[r.round][r.player_id] ?? 0) + r.points
+    for (const round of Object.keys(priorByRound)) awardWeek(priorByRound[Number(round)])
 
     // Score every race that has results stored — provisional or official — so the
     // championship reflects temporary results the moment they sync and then self-
@@ -50,14 +64,13 @@ export default function StandingsPage() {
       const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', raceId)
       const byPlayer: Record<string, string[]> = {}
       for (const p of picks ?? []) (byPlayer[p.player_id] ??= []).push(p.driver_id)
-      cumulative = addToCumulative(
-        cumulative,
-        scoreRace(byPlayer, (results ?? []).map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position }))),
-      )
+      const week = scoreRace(byPlayer, (results ?? []).map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
+      cumulative = addToCumulative(cumulative, week)
+      awardWeek(week)
     }
     setSeasonRows(
       Object.entries(cumulative)
-        .map(([id, points]) => ({ name: nameById[id] ?? id, color: colorById[id] ?? '#888', points }))
+        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', points, weeklyWins: weeklyWins[id] ?? 0 }))
         .sort((a, b) => a.points - b.points),
     )
 
@@ -173,13 +186,24 @@ export default function StandingsPage() {
 
       {view === 'season' ? (
         <>
-          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>Lowest total wins (golf scoring).</p>
+          <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0 }}>Lowest total wins (golf scoring). 🏆 = weekly win · 🍕 = buys dinner.</p>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             {seasonRows.map((r, i) => (
-              <div key={r.name} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
+              <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
                 <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
-                <span style={{ flex: 1, fontWeight: 700 }}>{r.name}</span>
-                <span>{r.points}</span>
+                <span style={{ fontWeight: 700 }}>{r.name}</span>
+                {/* 3rd & 4th place buy dinner for 1st & 2nd. */}
+                {i >= 2 && (
+                  <img src="/boston-pizza.svg" alt="Buys dinner (Boston Pizza)" title="Buys dinner — Boston Pizza" width={18} height={18} />
+                )}
+                {/* A trophy for each weekly win. */}
+                {r.weeklyWins > 0 && (
+                  <span style={{ flex: 1, fontSize: 13, letterSpacing: 1, lineHeight: 1.4, wordBreak: 'break-word' }}>
+                    {'🏆'.repeat(r.weeklyWins)}
+                  </span>
+                )}
+                {r.weeklyWins === 0 && <span style={{ flex: 1 }} />}
+                <span style={{ fontWeight: 700 }}>{r.points}</span>
               </div>
             ))}
             {seasonRows.length === 0 && <p style={{ color: 'var(--muted)' }}>No completed races scored yet.</p>}
