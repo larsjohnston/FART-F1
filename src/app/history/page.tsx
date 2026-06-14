@@ -4,12 +4,27 @@ import { useEffect, useState, type CSSProperties } from 'react'
 interface Standing { id: string; name: string; color: string; points: number }
 interface SeasonData { standings: Standing[]; races: { race_no: number; pts: Record<string, number> }[]; complete: boolean }
 interface CareerRow { id: string; name: string; color: string; points: number; titles: number }
+interface PInfo { id: string; name: string; color: string }
+interface Award { driver: string; count: number; avg: number }
+interface WeekRec extends PInfo { season: number; race_no: number; points: number }
+interface TitleRec { season: number; leader: PInfo; runnerUp: PInfo; margin: number }
+interface Stats {
+  weeklyWins: (PInfo & { wins: number })[]
+  streaks: (PInfo & { streak: number })[]
+  donkeys: (PInfo & { count: number })[]
+  bestWeek: WeekRec | null
+  worstWeek: WeekRec | null
+  titleBiggest: TitleRec | null
+  titleClosest: TitleRec | null
+  driverAwards: Record<string, { golden: Award | null; letdown: Award | null }>
+}
 interface History {
   ok: boolean
   seasons: number[]
   players: { id: string; name: string; color: string }[]
   bySeason: Record<string, SeasonData>
   allTime: { totals: CareerRow[]; favorite: Record<string, { driver: string; count: number }> }
+  stats: Stats
 }
 
 export default function HistoryPage() {
@@ -70,7 +85,96 @@ export default function HistoryPage() {
                   )
                 })}
               </div>
-              <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 12 }}>🏆 = Season Titles</p>
+              {/* ---------------- All-Time fun stats ---------------- */}
+              <h3 style={{ fontSize: 15, marginTop: 22 }}>Weekly wins (career)</h3>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {data.stats.weeklyWins.map(r => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
+                    <span style={{ width: 90, fontWeight: 700, color: r.color }}>{r.name}</span>
+                    <span style={{ flex: 1 }}>{r.wins > 0 ? '🏆'.repeat(Math.min(r.wins, 12)) : ''}</span>
+                    <span style={{ color: 'var(--muted)' }}>{r.wins}</span>
+                  </div>
+                ))}
+              </div>
+
+              <h3 style={{ fontSize: 15, marginTop: 18 }}>Records</h3>
+              <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                {data.stats.bestWeek && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span><span style={{ color: 'var(--live)', fontWeight: 700 }}>Best week</span> · {data.stats.bestWeek.name}</span>
+                    <span style={{ color: 'var(--muted)' }}>{data.stats.bestWeek.points} pts · {data.stats.bestWeek.season} R{data.stats.bestWeek.race_no}</span>
+                  </div>
+                )}
+                {data.stats.worstWeek && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span><span style={{ color: 'var(--warn)', fontWeight: 700 }}>Worst week</span> · {data.stats.worstWeek.name}</span>
+                    <span style={{ color: 'var(--muted)' }}>{data.stats.worstWeek.points} pts · {data.stats.worstWeek.season} R{data.stats.worstWeek.race_no}</span>
+                  </div>
+                )}
+                {data.stats.streaks[0] && data.stats.streaks[0].streak > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span><span style={{ fontWeight: 700 }}>Longest win streak</span> · {data.stats.streaks[0].name}</span>
+                    <span style={{ color: 'var(--muted)' }}>{data.stats.streaks[0].streak} weeks in a row</span>
+                  </div>
+                )}
+              </div>
+
+              <h3 style={{ fontSize: 15, marginTop: 18, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <img src="/donkey.svg" alt="" width={20} height={20} /> Donkey of the year
+              </h3>
+              <p style={{ color: 'var(--muted)', fontSize: 11, margin: '2px 0 6px' }}>Wooden spoon — finished last in a completed season.</p>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {data.stats.donkeys.map(r => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
+                    <span style={{ width: 90, fontWeight: 700, color: r.color }}>{r.name}</span>
+                    <span style={{ flex: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                      {Array.from({ length: r.count }).map((_, k) => <img key={k} src="/donkey.svg" alt="" width={16} height={16} />)}
+                    </span>
+                    <span style={{ color: 'var(--muted)' }}>{r.count}</span>
+                  </div>
+                ))}
+              </div>
+
+              {(data.stats.titleBiggest || data.stats.titleClosest) && (
+                <>
+                  <h3 style={{ fontSize: 15, marginTop: 18 }}>Title margins</h3>
+                  <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+                    {data.stats.titleBiggest && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span><span style={{ fontWeight: 700 }}>Biggest blowout</span> · {data.stats.titleBiggest.season}</span>
+                        <span style={{ color: 'var(--muted)' }}>{data.stats.titleBiggest.leader.name} by {data.stats.titleBiggest.margin}</span>
+                      </div>
+                    )}
+                    {data.stats.titleClosest && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span><span style={{ fontWeight: 700 }}>Closest race</span> · {data.stats.titleClosest.season}</span>
+                        <span style={{ color: 'var(--muted)' }}>
+                          {data.stats.titleClosest.margin === 0
+                            ? `${data.stats.titleClosest.leader.name} & ${data.stats.titleClosest.runnerUp.name} tied`
+                            : `${data.stats.titleClosest.leader.name} by ${data.stats.titleClosest.margin}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <h3 style={{ fontSize: 15, marginTop: 18 }}>Driver awards</h3>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {data.players.map(p => {
+                  const da = data.stats.driverAwards[p.id]
+                  if (!da || (!da.golden && !da.letdown)) return null
+                  return (
+                    <div key={p.id} style={{ fontSize: 13 }}>
+                      <div style={{ fontWeight: 700, color: p.color }}>{p.name}</div>
+                      {da.golden && <div style={{ color: 'var(--muted)' }}>🌟 Golden pick: {da.golden.driver} <span style={{ opacity: 0.7 }}>(avg P{da.golden.avg}, {da.golden.count}×)</span></div>}
+                      {da.letdown && <div style={{ color: 'var(--muted)' }}>🫏 Biggest letdown: {da.letdown.driver} <span style={{ opacity: 0.7 }}>(avg P{da.letdown.avg}, {da.letdown.count}×)</span></div>}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 16 }}>🏆 = Season Titles</p>
             </>
           ) : (
             <SeasonView season={data.bySeason[String(view)]} players={data.players} year={view} />
