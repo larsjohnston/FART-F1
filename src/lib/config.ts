@@ -12,3 +12,11 @@ export const CURRENT_SEASON = 2026
  *  - LEAGUE_NAME: human label for branding and AI commentary. */
 export const LEAGUE_ID = process.env.NEXT_PUBLIC_LEAGUE_ID ?? 'fart-f1'
 export const LEAGUE_NAME = process.env.NEXT_PUBLIC_LEAGUE_NAME ?? 'FART-F1'
+
+/** Postgres schema this pool's tables live in. Defaults to `public` (the original
+ *  pool). A second pool can share one Supabase project by living in its own schema
+ *  (e.g. `pool2`) — set NEXT_PUBLIC_SUPABASE_SCHEMA on that deployment. Used by both
+ *  Supabase clients (`db.schema`) and the realtime subscription filters. Must be a
+ *  bare identifier (letters/digits/underscore), and the schema must be added to the
+ *  project's exposed Data API schemas. See docs/SECOND-LEAGUE.md. */
+export const SUPABASE_SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
