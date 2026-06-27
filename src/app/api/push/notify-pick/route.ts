@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
       pickInRound: ((last.overall - 1) % size) + 1,
       playerCount: size,
       raceName,
+      players: (players ?? []).map((p) => p.name),
     })
     if (quip) {
       await db.from('commentary').upsert(
