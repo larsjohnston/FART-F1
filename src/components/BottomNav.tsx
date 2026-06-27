@@ -14,7 +14,12 @@ export default function BottomNav() {
   const path = usePathname()
   return (
     <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 520, margin: '0 auto',
-      display: 'flex', background: 'var(--panel)', borderTop: '1px solid var(--line)' }}>
+      display: 'flex', background: 'var(--panel)', borderTop: '1px solid var(--line)',
+      // Promote to its own compositor layer so iOS Safari keeps it pinned to the
+      // viewport while scrolling — without this the fixed bar gets stranded
+      // mid-page during momentum scroll. Also clear the home-indicator safe area.
+      transform: 'translateZ(0)', willChange: 'transform',
+      paddingBottom: 'env(safe-area-inset-bottom)', zIndex: 50 }}>
       {TABS.map(t => {
         const active = path?.startsWith(t.href) ?? false
         return (
