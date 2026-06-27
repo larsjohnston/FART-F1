@@ -35,6 +35,25 @@ describe('onClock (straight order)', () => {
   })
 })
 
+describe('onClock (snake order)', () => {
+  const snakeCfg = { order, rounds: 5, snake: true }
+  it('round 1 runs forward', () => {
+    expect(onClock({ config: snakeCfg, picks: [] })).toEqual({ overall: 1, round: 1, playerId: 'p1' })
+  })
+  it('round 2 reverses — pick 5 goes to order[last]', () => {
+    const picks = Array.from({ length: 4 }, (_, i) => ({
+      overall: i + 1, round: 1, playerId: order[i], driverId: `d${i}`, actorId: order[i],
+    }))
+    expect(onClock({ config: snakeCfg, picks })).toEqual({ overall: 5, round: 2, playerId: 'p4' })
+  })
+  it('round 3 runs forward again', () => {
+    const picks = Array.from({ length: 8 }, (_, i) => ({
+      overall: i + 1, round: Math.floor(i / 4) + 1, playerId: order[i % 4], driverId: `d${i}`, actorId: order[i % 4],
+    }))
+    expect(onClock({ config: snakeCfg, picks })).toEqual({ overall: 9, round: 3, playerId: 'p1' })
+  })
+})
+
 describe('applyPick', () => {
   it('assigns the driver to the on-clock player and records the actor', () => {
     const s = applyPick({ config: cfg, picks: [] }, 'max_verstappen', 'p3') // p3 picks for p1

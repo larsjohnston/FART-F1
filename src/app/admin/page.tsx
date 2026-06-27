@@ -3,58 +3,71 @@ import { useEffect, useState, CSSProperties } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
+import { CURRENT_SEASON } from '@/lib/config'
 import NamePicker from '@/components/NamePicker'
 
-const inp: CSSProperties = {
-  background: 'var(--panel-2)', color: 'var(--text)',
-  border: '1px solid var(--line)', borderRadius: 6, padding: '6px 8px',
-}
 const btn: CSSProperties = {
   background: 'var(--accent)', color: '#fff', border: 'none',
   borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 13,
   textDecoration: 'none', display: 'inline-block', textAlign: 'center', cursor: 'pointer',
 }
+const ghost: CSSProperties = { ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }
+const navBtn: CSSProperties = {
+  ...btn, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  padding: '16px 16px', fontSize: 15,
+}
 
 const shortName = (n: string) => n.replace(/\s+Grand Prix$/i, '')
 
+type Race = { id: string; round: number; name: string; date: string | null; status: string }
+
 export default function AdminPage() {
   const { actingAs } = usePlayer()
-  const [season, setSeason] = useState('2026')
-  const [races, setRaces] = useState<{ round: number; name: string; date: string | null }[]>([])
-  const [round, setRound] = useState('')
-  const [draftTiming, setDraftTiming] = useState<'before' | 'after'>('after')
+  const [current, setCurrent] = useState<Race | null>(null)
+  const [calendarLoaded, setCalendarLoaded] = useState(false)
   const [msg, setMsg] = useState('')
 
-  useEffect(() => {
-    supabase.from('league_settings').select('draft_timing').eq('id', 1).maybeSingle()
-      .then(({ data }) => { if (data?.draft_timing) setDraftTiming(data.draft_timing as 'before' | 'after') })
-  }, [])
-
-  async function loadRaces() {
+  async function loadCurrentRace() {
     const { data } = await supabase
-      .from('races').select('round,name,date').eq('season', Number(season)).order('round')
-    const rs = data ?? []
-    setRaces(rs)
-    if (!rs.length) return
-    // Default to the current race: the most recent one that has already
-    // happened (date on/before today), or the first race if none have yet.
+      .from('races').select('id,round,name,date,status').eq('season', CURRENT_SEASON).order('round')
+    const rs = (data ?? []) as Race[]
+    if (!rs.length) { setCurrent(null); return }
+    // The current race: a draft is open, else the most recent race that has
+    // already happened (date ≤ today), else round 1.
     const today = new Date().toISOString().slice(0, 10)
+    const drafting = rs.find(r => r.status === 'drafting')
     const happened = rs.filter(r => r.date && r.date <= today)
-    const current = happened.length ? happened[happened.length - 1] : rs[0]
-    setRound(String(current.round))
+    setCurrent(drafting ?? (happened.length ? happened[happened.length - 1] : rs[0]))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { loadRaces() }, [season])
+  // Auto-load the calendar when the commissioner opens this page, then show the
+  // current race. No more manual "Load Calendar" button.
+  useEffect(() => {
+    if (!actingAs?.is_commissioner) return
+    let cancelled = false
+    ;(async () => {
+      await loadCurrentRace() // show something immediately
+      try {
+        await fetch('/api/calendar', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ season: CURRENT_SEASON }),
+        })
+      } catch { /* best-effort — autopilot also keeps it loaded */ }
+      if (!cancelled) { setCalendarLoaded(true); await loadCurrentRace() }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actingAs?.id])
 
   if (!actingAs) return <NamePicker />
   if (!actingAs.is_commissioner) return <main style={{ padding: 20 }}>Commissioner only.</main>
 
   async function sync() {
+    if (!current) return
     setMsg('Syncing…')
     const res = await fetch('/api/sync', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ season: Number(season), round: Number(round) }),
+      body: JSON.stringify({ season: CURRENT_SEASON, round: current.round }),
     }).then(r => r.json())
     setMsg(
       !res.ok ? `Error: ${res.error}`
@@ -63,24 +76,14 @@ export default function AdminPage() {
         : res.qualified ? `Qualifying synced — ${res.drivers} drivers.`
         : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',
     )
-  }
-
-  async function loadCalendar() {
-    setMsg('Loading calendar…')
-    const res = await fetch('/api/calendar', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ season: Number(season) }),
-    }).then(r => r.json())
-    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
-    await loadRaces()
-    setMsg(`Calendar loaded — ${res.rounds} races on the ${season} schedule.`)
+    await loadCurrentRace()
   }
 
   async function advanceNow() {
     setMsg('Advancing…')
     const res = await fetch('/api/cron', { method: 'POST' }).then(r => r.json())
     if (!res.ok) { setMsg(`Error: ${res.error}`); return }
-    await loadRaces()
+    await loadCurrentRace()
     setMsg(
       res.opened
         ? `Advanced — opened the draft for round ${res.opened}. Players can pick now.`
@@ -88,49 +91,32 @@ export default function AdminPage() {
     )
   }
 
-  async function setTiming(timing: 'before' | 'after') {
-    setDraftTiming(timing)
-    const { error } = await supabase.from('league_settings').update({ draft_timing: timing }).eq('id', 1)
-    setMsg(error ? `Error: ${error.message}` : `Draft timing: ${timing === 'before' ? 'Pre-Qualifying' : 'Post Qualifying'}.`)
-  }
-
-  const toggle = (active: boolean): CSSProperties => ({
-    ...btn, flex: 1,
-    ...(active ? {} : { background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }),
-  })
+  const city = current ? shortName(current.name) : '—'
 
   return (
     <main style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22 }}>Commissioner</h1>
 
-      <section style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 13 }}>Season <input value={season} onChange={e => setSeason(e.target.value)} style={{ ...inp, width: 64 }} /></label>
-        <label style={{ fontSize: 13 }}>Race{' '}
-          <select value={round} onChange={e => setRound(e.target.value)} style={inp}>
-            {races.map(r => <option key={r.round} value={r.round}>{shortName(r.name)}</option>)}
-          </select>
-        </label>
-        <button onClick={sync} style={btn}>Sync</button>
-        <button onClick={loadCalendar} style={{ ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Load Calendar</button>
-        <button onClick={advanceNow} style={{ ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Advance now</button>
+      <section style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+        <Link href="/admin/league" style={navBtn}>⚙️ League Settings <span>→</span></Link>
+        <Link href="/admin/players" style={navBtn}>👤 Player Settings <span>→</span></Link>
+        <Link href="/admin/history" style={navBtn}>📜 Re-write History <span>→</span></Link>
       </section>
 
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>
-        Autopilot runs daily: the calendar stays loaded and the next race&rsquo;s draft opens automatically
-        ({draftTiming === 'before' ? 'the day after each race' : 'once qualifying is in'}). Use Advance now to do it immediately.
-      </p>
-
-      <section style={{ marginTop: 18 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Draft Timing</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setTiming('before')} style={toggle(draftTiming === 'before')}>Pre-Qualifying</button>
-          <button onClick={() => setTiming('after')} style={toggle(draftTiming === 'after')}>Post Qualifying</button>
+      <section style={{ marginTop: 22, border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Current race</div>
+        <div style={{ fontWeight: 800, fontSize: 18, margin: '2px 0 10px' }}>
+          {current ? `R${current.round} · ${city}` : (calendarLoaded ? 'No races yet' : 'Loading…')}
         </div>
-      </section>
-
-      <section style={{ marginTop: 20, display: 'grid', gap: 10 }}>
-        <Link href={`/admin/order?round=${round}`} style={btn}>Draft Order →</Link>
-        <Link href="/admin/prior" style={btn}>Update Prior Races →</Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={sync} style={btn} disabled={!current}>Sync</button>
+          {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
+          <button onClick={advanceNow} style={ghost}>Advance now</button>
+        </div>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+          The calendar loads automatically. Autopilot runs daily and opens each draft on its own —
+          use Sync to pull results now, or Advance now to move the season forward immediately.
+        </p>
       </section>
 
       <p style={{ color: 'var(--warn)', marginTop: 12 }}>{msg}</p>

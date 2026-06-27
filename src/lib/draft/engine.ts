@@ -12,7 +12,12 @@ export function onClock(state: DraftState): OnClock | null {
   if (isComplete(state)) return null
   const n = state.picks.length
   const size = state.config.order.length
-  return { overall: n + 1, round: Math.floor(n / size) + 1, playerId: state.config.order[n % size] }
+  const round0 = Math.floor(n / size)
+  const posInRound = n % size
+  // Snake drafts reverse the pick order on every other round so the last picker
+  // of one round picks first in the next (mitigates first-pick advantage).
+  const idx = state.config.snake && round0 % 2 === 1 ? size - 1 - posInRound : posInRound
+  return { overall: n + 1, round: round0 + 1, playerId: state.config.order[idx] }
 }
 
 export function applyPick(state: DraftState, driverId: string, actorId: string): DraftState {

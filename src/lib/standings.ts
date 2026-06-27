@@ -33,6 +33,45 @@ export async function computePoolStandings(playerIds: string[]): Promise<PoolSta
   return Object.entries(cumulative).map(([id, points]) => ({ id, points }))
 }
 
+/**
+ * Per-player points for the single most recent completed (non-historic) race —
+ * the basis for "weekly loser drafts first". Returns zeros for everyone if no
+ * in-app race has been scored yet (order then falls back to the tiebreak).
+ */
+export async function computeLastWeekStandings(playerIds: string[]): Promise<PoolStanding[]> {
+  const cumulative: Record<string, number> = {}
+  for (const id of playerIds) cumulative[id] = 0
+
+  const { data: completeRaces } = await supabase
+    .from('races').select('id,round').eq('status', 'complete').eq('season', CURRENT_SEASON)
+    .order('round', { ascending: false })
+
+  for (const r of completeRaces ?? []) {
+    const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', r.id).maybeSingle()
+    if (!draft || draft.historic) continue
+    const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
+    const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', r.id)
+    const byPlayer: Record<string, string[]> = {}
+    for (const p of picks ?? []) (byPlayer[p.player_id] ??= []).push(p.driver_id)
+    const week = scoreRace(byPlayer, (results ?? []).map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
+    for (const [id, pts] of Object.entries(week)) cumulative[id] = (cumulative[id] ?? 0) + pts
+    break // most recent scored race only
+  }
+
+  return Object.entries(cumulative).map(([id, points]) => ({ id, points }))
+}
+
+/** Resolve the draft order for the configured basis (worst-placed picks first). */
+export async function computeDraftOrder(
+  playerIds: string[],
+  basis: 'overall' | 'weekly',
+): Promise<string[]> {
+  const standings = basis === 'weekly'
+    ? await computeLastWeekStandings(playerIds)
+    : await computePoolStandings(playerIds)
+  return draftOrderFromStandings(standings, playerIds)
+}
+
 /** Draft order = worst-placed first (most points), ties broken by the given order. */
 export function draftOrderFromStandings(standings: PoolStanding[], tiebreak: string[]): string[] {
   const idx = new Map(tiebreak.map((id, i) => [id, i]))

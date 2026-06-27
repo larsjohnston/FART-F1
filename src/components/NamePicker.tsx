@@ -25,8 +25,11 @@ export default function NamePicker({ onPicked }: { onPicked?: (p: Player) => voi
             key={p.id}
             onClick={() => { setActingAs(p); onPicked?.(p) }}
             style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
               textAlign: 'left',
-              padding: '14px 16px',
+              padding: '12px 16px',
               borderRadius: 12,
               border: '1px solid var(--line)',
               background: 'var(--panel-2)',
@@ -35,7 +38,16 @@ export default function NamePicker({ onPicked }: { onPicked?: (p: Player) => voi
               fontSize: 16,
             }}
           >
-            {p.name}{p.is_commissioner ? ' · 🏁 commish' : ''}{actingAs?.id === p.id ? ' ✓' : ''}
+            {p.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.photo_url} alt={p.name}
+                style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${p.color}`, flexShrink: 0 }} />
+            ) : (
+              <span style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--panel)', fontWeight: 800, border: `2px solid ${p.color}` }}>
+                {p.name.slice(0, 1)}
+              </span>
+            )}
+            <span>{p.name}{p.is_commissioner ? ' · 🏁 commish' : ''}{actingAs?.id === p.id ? ' ✓' : ''}</span>
           </button>
         ))}
       </div>

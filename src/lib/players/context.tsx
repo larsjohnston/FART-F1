@@ -6,6 +6,7 @@ export interface Player {
   name: string
   color: string
   is_commissioner: boolean
+  photo_url?: string | null
 }
 
 interface Ctx {

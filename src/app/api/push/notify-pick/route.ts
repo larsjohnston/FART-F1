@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!picks?.length) return NextResponse.json({ ok: true, skipped: 'no picks' })
 
     const state: DraftState = {
-      config: { order: draft.pick_order, rounds: draft.rounds },
+      config: { order: draft.pick_order, rounds: draft.rounds, snake: draft.snake ?? false },
       picks: picks.map((p) => ({
         overall: p.overall, round: p.round,
         playerId: p.player_id, driverId: p.driver_id, actorId: p.actor_id,
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
 
     const { data: players } = await db.from('players').select('id,name')
     const nameById = Object.fromEntries((players ?? []).map((p) => [p.id, p.name]))
+    const { data: settings } = await db.from('league_settings').select('league_name').eq('id', 1).maybeSingle()
     const { data: driver } = await db
       .from('drivers').select('family_name,constructor_id').eq('id', last.driverId).maybeSingle()
     const driverName = driver?.family_name ?? 'a driver'
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
       playerCount: size,
       raceName,
       players: (players ?? []).map((p) => p.name),
+      leagueName: settings?.league_name ?? null,
     })
     if (quip) {
       await db.from('commentary').upsert(
