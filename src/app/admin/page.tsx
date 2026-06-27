@@ -91,6 +91,14 @@ export default function AdminPage() {
     )
   }
 
+  async function openDraftNow() {
+    setMsg('Opening the draft…')
+    const res = await fetch('/api/draft/open', { method: 'POST' }).then(r => r.json())
+    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+    await loadCurrentRace()
+    setMsg(res.message ?? (res.opened ? `Draft opened for round ${res.opened}.` : 'Nothing to open.'))
+  }
+
   const city = current ? shortName(current.name) : '—'
 
   return (
@@ -110,12 +118,14 @@ export default function AdminPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={sync} style={btn} disabled={!current}>Sync</button>
+          <button onClick={openDraftNow} style={btn}>Open draft now</button>
           {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
           <button onClick={advanceNow} style={ghost}>Advance now</button>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-          The calendar loads automatically. Autopilot runs daily and opens each draft on its own —
-          use Sync to pull results now, or Advance now to move the season forward immediately.
+          The calendar loads automatically and the autopilot opens each draft on its own (and pushes everyone
+          when it does). <b>Open draft now</b> opens the next race&rsquo;s draft immediately; <b>Sync</b> pulls fresh
+          results/qualifying; <b>Advance now</b> runs the full autopilot once.
         </p>
       </section>
 
