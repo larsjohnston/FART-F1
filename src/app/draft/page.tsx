@@ -8,6 +8,7 @@ import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
 import OnTheClock from '@/components/OnTheClock'
 import NamePicker from '@/components/NamePicker'
+import EnableNotifications from '@/components/EnableNotifications'
 import { CURRENT_SEASON } from '@/lib/config'
 import { TEAM_COLORS } from '@/lib/f1/teamColors'
 
@@ -182,6 +183,11 @@ export default function DraftPage() {
     if (!draft || !state || !actingAs) return
     try {
       await makePick(draft, state, driverId, actingAs.id)
+      // Best-effort push: tell the next player it's their turn + others the pick.
+      fetch('/api/push/notify-pick', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ raceId: draft.race_id }),
+      }).catch(() => {})
       await refresh()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -218,6 +224,9 @@ export default function DraftPage() {
         <div style={{ fontSize: 17, fontWeight: 800 }}>{raceName}</div>
       </div>
       <OnTheClock name={onClockName} yours={yours} />
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--line)' }}>
+        <EnableNotifications />
+      </div>
       {actingAs.is_commissioner && last && !saved && (
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--line)' }}>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>Last: {lastPlayerName} → {lastDriverName}</span>
