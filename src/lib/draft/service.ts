@@ -70,6 +70,33 @@ export function subscribePicks(draftId: string, onChange: () => void) {
   }
 }
 
+export interface CommentaryRow { overall: number; text: string }
+
+/** Load all sarcastic commentary lines for a draft, in pick order. */
+export async function loadCommentary(draftId: string): Promise<CommentaryRow[]> {
+  const { data } = await supabase
+    .from('commentary')
+    .select('overall,text')
+    .eq('draft_id', draftId)
+    .order('overall')
+  return data ?? []
+}
+
+/** Subscribe to live commentary inserts for a draft. */
+export function subscribeCommentary(draftId: string, onChange: () => void) {
+  const ch = supabase
+    .channel(`commentary-${draftId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'commentary', filter: `draft_id=eq.${draftId}` },
+      onChange,
+    )
+    .subscribe()
+  return () => {
+    supabase.removeChannel(ch)
+  }
+}
+
 export async function undoLastPick(draftId: string) {
   const { data } = await supabase
     .from('picks')

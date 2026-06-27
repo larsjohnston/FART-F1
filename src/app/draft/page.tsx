@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
-import { loadDraft, makePick, subscribePicks, undoLastPick, type DraftRow } from '@/lib/draft/service'
+import { loadDraft, makePick, subscribePicks, undoLastPick, loadCommentary, subscribeCommentary, type DraftRow, type CommentaryRow } from '@/lib/draft/service'
 import { onClock } from '@/lib/draft/engine'
 import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
@@ -25,6 +25,11 @@ export default function DraftPage() {
   const [view, setView] = useState<'players' | 'sequence'>('players')
   const [champ, setChamp] = useState<{ drivers: ChampDriver[]; constructors: ChampCons[] } | null>(null)
   const [champView, setChampView] = useState<'drivers' | 'constructors'>('drivers')
+  const [commentary, setCommentary] = useState<CommentaryRow[]>([])
+
+  const loadComms = useCallback(async (draftId: string) => {
+    setCommentary(await loadCommentary(draftId))
+  }, [])
 
   const refresh = useCallback(async () => {
     // Active race = latest race currently 'drafting'.
@@ -37,17 +42,18 @@ export default function DraftPage() {
       .limit(1)
       .maybeSingle()
     if (!race) {
-      setDraft(null); setState(null); setDrivers([])
+      setDraft(null); setState(null); setDrivers([]); setCommentary([])
       return
     }
     setRaceName(race.name)
 
     const loaded = await loadDraft(race.id)
     if (!loaded) {
-      setDraft(null); setState(null); setDrivers([])
+      setDraft(null); setState(null); setDrivers([]); setCommentary([])
       return
     }
     setDraft(loaded.draft)
+    loadComms(loaded.draft.id)
     setState(loaded.state)
 
     const { data: pl } = await supabase.from('players').select('id,name,color')
@@ -116,13 +122,17 @@ export default function DraftPage() {
         })
         .sort((a, b) => (a.quali ?? 99) - (b.quali ?? 99)),
     )
-  }, [])
+  }, [loadComms])
 
   useEffect(() => { refresh() }, [refresh])
   useEffect(() => {
     if (!draft) return
     return subscribePicks(draft.id, refresh)
   }, [draft, refresh])
+  useEffect(() => {
+    if (!draft) return
+    return subscribeCommentary(draft.id, () => loadComms(draft.id))
+  }, [draft, loadComms])
   useEffect(() => {
     fetch(`/api/championship?season=${CURRENT_SEASON}`)
       .then(r => r.json())
@@ -227,6 +237,21 @@ export default function DraftPage() {
       <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--line)' }}>
         <EnableNotifications />
       </div>
+      {commentary.length > 0 && (
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', background: 'var(--panel)' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: 'var(--accent)', marginBottom: 6 }}>
+            📣 THE BOOTH
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 132, overflowY: 'auto' }}>
+            {[...commentary].reverse().slice(0, 6).map(c => (
+              <div key={c.overall} style={{ fontSize: 13, fontStyle: 'italic', color: 'var(--text)', lineHeight: 1.35 }}>
+                <span style={{ color: 'var(--muted)', fontStyle: 'normal' }}>#{c.overall} </span>
+                {c.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {actingAs.is_commissioner && last && !saved && (
         <div style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--line)' }}>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>Last: {lastPlayerName} → {lastDriverName}</span>
