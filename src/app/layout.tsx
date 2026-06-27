@@ -30,7 +30,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ maxWidth: 520, margin: '0 auto', minHeight: '100dvh', paddingBottom: 64 }}>
+      <body style={{ maxWidth: 520, margin: '0 auto', minHeight: '100dvh', paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}>
         <PlayerProvider>{children}</PlayerProvider>
         <BottomNav />
         <ServiceWorker />
