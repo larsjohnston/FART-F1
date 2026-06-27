@@ -50,19 +50,28 @@ export async function GET(req: NextRequest) {
     const picks = (picksRaw ?? []).filter(p => seasonRaceIds.has(draftRace.get(p.draft_id) ?? ''))
     const finishByKey = new Map((resultsRaw ?? []).map(r => [`${r.race_id}:${r.driver_id}`, r.finish_position]))
 
-    // ---------- Pool scoring per race (THE rule): drop the undrafted drivers,
-    // then rank the drafted field by finishing position (1 = best … N = worst). ----------
+    // ---------- Per-driver "FART Pts": season-long finishing-rank tally for
+    // EVERY driver, drafted or not. Each race, rank the full classified field by
+    // finishing position (winner = 1 … backmarker = N) and sum across the season.
+    // Lower = consistently finishing near the front. ----------
     const poolPointsByDriver = new Map<string, number>()
+    // ---------- Weekly wins: still the POOL rule — drop undrafted drivers, rank
+    // the drafted field, lowest weekly total wins. ----------
     const winsById = new Map<string, number>()
     for (const r of races ?? []) {
-      const d = (drafts ?? []).find(x => x.race_id === r.id)
-      if (!d) continue
-      const racePicks = picks.filter(p => p.draft_id === d.id)
       const finish = new Map<string, number>()
       for (const res of resultsRaw ?? []) if (res.race_id === r.id) finish.set(res.driver_id, res.finish_position)
       if (finish.size === 0) continue // not raced/scored yet
+
+      // Full-field rank → every driver accumulates points this race.
+      const fieldPts = rankDraftedPoints([...finish.keys()], finish)
+      for (const [drv, pt] of fieldPts) poolPointsByDriver.set(drv, (poolPointsByDriver.get(drv) ?? 0) + pt)
+
+      // Weekly win (drafted field only).
+      const d = (drafts ?? []).find(x => x.race_id === r.id)
+      if (!d) continue
+      const racePicks = picks.filter(p => p.draft_id === d.id)
       const pts = rankDraftedPoints(racePicks.map(p => p.driver_id), finish)
-      for (const [drv, pt] of pts) poolPointsByDriver.set(drv, (poolPointsByDriver.get(drv) ?? 0) + pt)
       const totals = new Map<string, number>()
       for (const p of racePicks) {
         const pt = pts.get(p.driver_id)
