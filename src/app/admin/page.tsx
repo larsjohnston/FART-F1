@@ -76,6 +76,18 @@ export default function AdminPage() {
     setMsg(`Calendar loaded — ${res.rounds} races on the ${season} schedule.`)
   }
 
+  async function advanceNow() {
+    setMsg('Advancing…')
+    const res = await fetch('/api/cron', { method: 'POST' }).then(r => r.json())
+    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+    await loadRaces()
+    setMsg(
+      res.opened
+        ? `Advanced — opened the draft for round ${res.opened}. Players can pick now.`
+        : `Up to date — ${(res.log ?? []).slice(-1)[0] ?? 'nothing to advance'}.`,
+    )
+  }
+
   async function setTiming(timing: 'before' | 'after') {
     setDraftTiming(timing)
     const { error } = await supabase.from('league_settings').update({ draft_timing: timing }).eq('id', 1)
@@ -100,7 +112,13 @@ export default function AdminPage() {
         </label>
         <button onClick={sync} style={btn}>Sync</button>
         <button onClick={loadCalendar} style={{ ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Load Calendar</button>
+        <button onClick={advanceNow} style={{ ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Advance now</button>
       </section>
+
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 8 }}>
+        Autopilot runs daily: the calendar stays loaded and the next race&rsquo;s draft opens automatically
+        ({draftTiming === 'before' ? 'the day after each race' : 'once qualifying is in'}). Use Advance now to do it immediately.
+      </p>
 
       <section style={{ marginTop: 18 }}>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>Draft Timing</div>
