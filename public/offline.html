@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>FART-F1 — Offline</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #0d1117; color: #e8edf2;
+        font-family: system-ui, -apple-system, sans-serif; }
+      .wrap { height: 100%; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; text-align: center; padding: 24px; gap: 12px; }
+      img { width: 96px; height: 96px; border-radius: 22px; }
+      h1 { font-size: 20px; margin: 8px 0 0; }
+      p { color: #8a93a0; margin: 0; max-width: 320px; }
+      button { margin-top: 16px; background: #E8002D; color: #fff; border: none;
+        border-radius: 8px; padding: 10px 18px; font-weight: 700; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img src="/icon-192.png" alt="FART-F1" />
+      <h1>You're offline</h1>
+      <p>FART-F1 needs a connection for live standings and drafts. Reconnect and try again.</p>
+      <button onclick="location.reload()">Retry</button>
+    </div>
+  </body>
+</html>
