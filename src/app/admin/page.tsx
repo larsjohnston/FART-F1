@@ -30,20 +30,22 @@ export default function AdminPage() {
       .then(({ data }) => { if (data?.draft_timing) setDraftTiming(data.draft_timing as 'before' | 'after') })
   }, [])
 
-  useEffect(() => {
-    supabase.from('races').select('round,name,date').eq('season', Number(season)).order('round')
-      .then(({ data }) => {
-        const rs = data ?? []
-        setRaces(rs)
-        if (!rs.length) return
-        // Default to the current race: the most recent one that has already
-        // happened (date on/before today), or the first race if none have yet.
-        const today = new Date().toISOString().slice(0, 10)
-        const happened = rs.filter(r => r.date && r.date <= today)
-        const current = happened.length ? happened[happened.length - 1] : rs[0]
-        setRound(String(current.round))
-      })
-  }, [season])
+  async function loadRaces() {
+    const { data } = await supabase
+      .from('races').select('round,name,date').eq('season', Number(season)).order('round')
+    const rs = data ?? []
+    setRaces(rs)
+    if (!rs.length) return
+    // Default to the current race: the most recent one that has already
+    // happened (date on/before today), or the first race if none have yet.
+    const today = new Date().toISOString().slice(0, 10)
+    const happened = rs.filter(r => r.date && r.date <= today)
+    const current = happened.length ? happened[happened.length - 1] : rs[0]
+    setRound(String(current.round))
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { loadRaces() }, [season])
 
   if (!actingAs) return <NamePicker />
   if (!actingAs.is_commissioner) return <main style={{ padding: 20 }}>Commissioner only.</main>
@@ -61,6 +63,17 @@ export default function AdminPage() {
         : res.qualified ? `Qualifying synced — ${res.drivers} drivers.`
         : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',
     )
+  }
+
+  async function loadCalendar() {
+    setMsg('Loading calendar…')
+    const res = await fetch('/api/calendar', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ season: Number(season) }),
+    }).then(r => r.json())
+    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+    await loadRaces()
+    setMsg(`Calendar loaded — ${res.rounds} races on the ${season} schedule.`)
   }
 
   async function setTiming(timing: 'before' | 'after') {
@@ -86,6 +99,7 @@ export default function AdminPage() {
           </select>
         </label>
         <button onClick={sync} style={btn}>Sync</button>
+        <button onClick={loadCalendar} style={{ ...btn, background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Load Calendar</button>
       </section>
 
       <section style={{ marginTop: 18 }}>

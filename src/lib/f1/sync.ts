@@ -218,3 +218,29 @@ export async function syncRound(season: number, round: number) {
     drivers: drivers.length,
   }
 }
+
+/** Load the full season calendar into `races` so every round shows up in the
+ * commissioner dropdown immediately — well before any qualifying/results exist.
+ * Upserts name + date only, so an existing round's status (drafting/complete)
+ * is never clobbered; brand-new rounds land with the table default 'upcoming'. */
+export async function syncCalendar(season: number) {
+  const db = serverClient()
+
+  // The schedule endpoint lists the whole published calendar for the season.
+  const schedJson = await getJSON(`${JOLPICA}/${season}.json`)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const races: any[] = schedJson?.MRData?.RaceTable?.Races ?? []
+  if (!races.length) throw new Error(`No ${season} calendar published yet.`)
+
+  const rows = races.map((r) => ({
+    season,
+    round: Number(r.round),
+    name: r.raceName as string,
+    date: (r.date as string) ?? null,
+  }))
+
+  const { error } = await db.from('races').upsert(rows, { onConflict: 'season,round' })
+  if (error) throw new Error(`races calendar upsert failed: ${error.message}`)
+
+  return { rounds: rows.length, names: rows.map((r) => r.name) }
+}
