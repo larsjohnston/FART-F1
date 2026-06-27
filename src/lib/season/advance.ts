@@ -77,9 +77,10 @@ export async function advanceSeason(today: string) {
   }
 
   // 4 — advance to the next race. Never run two drafts at once.
-  if (races.some((r) => r.status === 'drafting')) {
-    log.push('a draft is already open — leaving it be')
-    return { ok: true, opened: null, log }
+  const openRace = races.find((r) => r.status === 'drafting')
+  if (openRace) {
+    log.push(`a draft is already open (R${openRace.round} ${openRace.name}) — leaving it be`)
+    return { ok: true, opened: null, drafting: openRace.round, log }
   }
 
   // The race to draft next: the soonest upcoming round that hasn't happened yet.
