@@ -42,10 +42,19 @@ positions wins. `CURRENT_SEASON` lives in `src/lib/config.ts` (currently 2026).
   best avg finish; Biggest Letdown = worst avg finish among drivers drafted ≥2×).
 - `/admin` — commissioner only. Race selector **defaults to the current race** (most recent
   race with `date` ≤ today, else round 1). Manual **Sync** button → `POST /api/sync`.
-- `/api/sync` — **POST only (manual sync).** There is **NO scheduled/automatic sync**: the
-  `*/5` cron was removed because the **Vercel Hobby plan only allows once-daily crons**
-  (frequent schedules fail the build with `cron_jobs_limits_reached`). `vercel.json` has no
-  crons; `CRON_SECRET` and the GET entrypoint are gone. Don't reintroduce crons unless on Pro.
+  Also **Load Calendar** (`POST /api/calendar` → `syncCalendar`, upserts the whole season's
+  rounds, name+date only so statuses survive) and **Advance now** (`POST /api/cron`).
+- `/api/sync` — **POST only (manual single-round sync).** Drives the Sync button.
+- **Season autopilot — `/api/cron` (`syncCalendar` + `advanceSeason`).** A **once-daily**
+  Vercel cron (`vercel.json`: `0 6 * * *`) — Hobby allows daily crons; only the old `*/5`
+  schedule failed (`cron_jobs_limits_reached`). **GET** is the cron entry, guarded by
+  `CRON_SECRET` (Vercel auto-sends `Authorization: Bearer <CRON_SECRET>`); **POST** is the
+  unguarded "Advance now" manual trigger. Each run is **idempotent**: loads the full calendar,
+  syncs the current + next race, auto-completes finished races (results present + `date` ≤ today),
+  and opens the next race's draft with the pick order auto-set from standings — gated by
+  `league_settings.draft_timing` (**before** = open day after the previous race; **after** =
+  open once that race's qualifying is synced). Only one draft open at a time; never reopens a
+  `drafting`/`complete` race. **Requires `CRON_SECRET` set in Vercel project env.**
 
 ## Assets
 - `public/boston-pizza.png` — "Beer Tab" badge logo (provided by the user; don't commit
