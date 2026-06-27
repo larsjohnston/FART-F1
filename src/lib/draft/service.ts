@@ -10,6 +10,7 @@ export interface DraftRow {
   status: string
   pick_order: string[]
   rounds: number
+  snake: boolean
 }
 
 export async function loadDraft(raceId: string): Promise<{ draft: DraftRow; state: DraftState } | null> {
@@ -27,7 +28,7 @@ export async function loadDraft(raceId: string): Promise<{ draft: DraftRow; stat
     .order('overall')
   if (pErr) throw pErr
   const state: DraftState = {
-    config: { order: draft.pick_order, rounds: draft.rounds },
+    config: { order: draft.pick_order, rounds: draft.rounds, snake: draft.snake ?? false },
     picks: (picks ?? []).map(p => ({
       overall: p.overall,
       round: p.round,

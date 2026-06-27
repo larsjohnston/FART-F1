@@ -5,8 +5,11 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
 import NamePicker from '@/components/NamePicker'
-import { computePoolStandings, draftOrderFromStandings } from '@/lib/standings'
+import { computeDraftOrder } from '@/lib/standings'
 import { CURRENT_SEASON } from '@/lib/config'
+
+type Settings = { drivers_per_week: number; draft_order_type: 'snake' | 'sequential'; draft_order_basis: 'overall' | 'weekly' }
+const DEFAULT_SETTINGS: Settings = { drivers_per_week: 5, draft_order_type: 'sequential', draft_order_basis: 'overall' }
 
 const btn: CSSProperties = {
   background: 'var(--accent)', color: '#fff', border: 'none',
@@ -20,6 +23,7 @@ function DraftOrderInner() {
   const [players, setPlayers] = useState<{ id: string; name: string }[]>([])
   const [order, setOrder] = useState<string[]>([])
   const [race, setRace] = useState<{ id: string; name: string } | null>(null)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -27,8 +31,11 @@ function DraftOrderInner() {
       const { data: pls } = await supabase.from('players').select('id,name').order('sort_order')
       const players = pls ?? []
       setPlayers(players)
-      const standings = await computePoolStandings(players.map(p => p.id))
-      setOrder(draftOrderFromStandings(standings, players.map(p => p.id)))
+      const { data: s } = await supabase
+        .from('league_settings').select('drivers_per_week,draft_order_type,draft_order_basis').eq('id', 1).maybeSingle()
+      const cfg = { ...DEFAULT_SETTINGS, ...(s ?? {}) } as Settings
+      setSettings(cfg)
+      setOrder(await computeDraftOrder(players.map(p => p.id), cfg.draft_order_basis))
       const { data: r } = await supabase
         .from('races').select('id,name').eq('season', CURRENT_SEASON).eq('round', round).maybeSingle()
       setRace(r ?? null)
@@ -50,15 +57,19 @@ function DraftOrderInner() {
   }
 
   async function autoOrder() {
-    const standings = await computePoolStandings(players.map(p => p.id))
-    setOrder(draftOrderFromStandings(standings, players.map(p => p.id)))
-    setMsg('Order set from standings (worst-placed picks first).')
+    setOrder(await computeDraftOrder(players.map(p => p.id), settings.draft_order_basis))
+    setMsg(settings.draft_order_basis === 'weekly'
+      ? 'Order set from last week (weekly loser picks first).'
+      : 'Order set from standings (worst-placed picks first).')
   }
 
   async function openDraft() {
     if (!race) { setMsg('Pick a race on the Commissioner page first.'); return }
     const { error } = await supabase
-      .from('drafts').upsert({ race_id: race.id, pick_order: order, status: 'open', rounds: 5 }, { onConflict: 'race_id' })
+      .from('drafts').upsert(
+        { race_id: race.id, pick_order: order, status: 'open', rounds: settings.drivers_per_week, snake: settings.draft_order_type === 'snake' },
+        { onConflict: 'race_id' },
+      )
     if (error) { setMsg(`Open failed: ${error.message}`); return }
     await supabase.from('races').update({ status: 'drafting' }).eq('id', race.id)
     setMsg(`${city} draft opened. Players can pick on the Draft tab.`)
@@ -75,9 +86,10 @@ function DraftOrderInner() {
       <Link href="/admin" style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'none' }}>← Commissioner</Link>
       <h1 style={{ fontSize: 22, marginTop: 6 }}>Draft Order — {city}</h1>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-        Auto-set from the standings (worst-placed picks first). Override with ↑/↓.
+        Auto-set from {settings.draft_order_basis === 'weekly' ? 'last week (weekly loser first)' : 'the standings (worst-placed first)'};
+        {' '}{settings.draft_order_type === 'snake' ? 'snake' : 'sequential'} order, {settings.drivers_per_week} drivers each. Override with ↑/↓. Change rules in League Settings.
       </p>
-      <button onClick={autoOrder} style={btn}>↻ Auto-set from standings</button>
+      <button onClick={autoOrder} style={btn}>↻ Auto-set order</button>
 
       <div style={{ marginTop: 10 }}>
         {order.map((id, i) => (

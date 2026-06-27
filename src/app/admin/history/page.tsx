@@ -7,20 +7,25 @@ import NamePicker from '@/components/NamePicker'
 import { rankDraftedPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON } from '@/lib/config'
 
-const PRIOR_ROUNDS = [1, 2, 3, 4, 5]
+const shortName = (n: string) => n.replace(/\s+Grand Prix$/i, '')
 
 const inp: CSSProperties = {
   width: 64, background: 'var(--panel-2)', color: 'var(--text)',
   border: '1px solid var(--line)', borderRadius: 6, padding: 4,
+}
+const sel: CSSProperties = {
+  background: 'var(--panel-2)', color: 'var(--text)',
+  border: '1px solid var(--line)', borderRadius: 6, padding: '6px 8px',
 }
 const btn: CSSProperties = {
   background: 'var(--panel-2)', color: 'var(--text)',
   border: '1px solid var(--line)', borderRadius: 8, padding: '6px 10px',
 }
 
-export default function PriorRacesPage() {
+export default function RewriteHistoryPage() {
   const { actingAs } = usePlayer()
   const [players, setPlayers] = useState<{ id: string; name: string }[]>([])
+  const [races, setRaces] = useState<{ round: number; name: string }[]>([])
   const [round, setRound] = useState(1)
   const [mode, setMode] = useState<'points' | 'picks'>('points')
   const [raceName, setRaceName] = useState('')
@@ -31,6 +36,8 @@ export default function PriorRacesPage() {
 
   useEffect(() => {
     supabase.from('players').select('id,name').order('sort_order').then(({ data }) => setPlayers(data ?? []))
+    supabase.from('races').select('round,name').eq('season', CURRENT_SEASON).order('round')
+      .then(({ data }) => { setRaces(data ?? []); if (data?.length) setRound(data[0].round) })
   }, [])
 
   const loadRound = useCallback(async (rnd: number) => {
@@ -45,7 +52,7 @@ export default function PriorRacesPage() {
 
     if (!race) { setDrivers([]); setAssign({}); return }
     // All drivers in this race = results ∪ qualifying (results carries the full
-    // 22-car field even when some drivers set no qualifying time).
+    // field even when some drivers set no qualifying time).
     const { data: res } = await supabase
       .from('results').select('driver_id,finish_position').eq('race_id', race.id)
     const { data: q } = await supabase
@@ -53,7 +60,6 @@ export default function PriorRacesPage() {
     const qpos = new Map((q ?? []).map(r => [r.driver_id, r.position]))
     const fpos = new Map((res ?? []).map(r => [r.driver_id, r.finish_position]))
     const ids = [...new Set([...(res ?? []).map(r => r.driver_id), ...(q ?? []).map(r => r.driver_id)])]
-    // Order by grid where available, otherwise by finishing position (after the qualifiers).
     ids.sort((a, b) => (qpos.get(a) ?? (fpos.get(a) ?? 99) + 100) - (qpos.get(b) ?? (fpos.get(b) ?? 99) + 100))
     let drv: { id: string; given_name: string; family_name: string }[] = []
     if (ids.length) {
@@ -72,6 +78,7 @@ export default function PriorRacesPage() {
     }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadRound(round) }, [round, loadRound])
 
   if (!actingAs) return <NamePicker />
@@ -125,24 +132,25 @@ export default function PriorRacesPage() {
 
   return (
     <main style={{ padding: 16 }}>
-      <Link href="/admin" style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'none' }}>← Admin</Link>
-      <h1 style={{ fontSize: 22, marginTop: 6 }}>Update Prior Races</h1>
+      <Link href="/admin" style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'none' }}>← Commissioner</Link>
+      <h1 style={{ fontSize: 22, marginTop: 6 }}>Re-write History</h1>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-        Races before the app (1-5). These feed the season standings; in-app races are scored automatically.
+        Fix any past round of the {CURRENT_SEASON} season, or fill in rounds played before the app —
+        enter points directly, or assign drivers and let the pool rule score them. These feed the season standings.
       </p>
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-        {PRIOR_ROUNDS.map(r => (
-          <button key={r} onClick={() => setRound(r)} style={{ ...btn, flex: 1, background: round === r ? 'var(--accent)' : 'var(--panel-2)' }}>
-            R{r}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 13 }}>Round{' '}
+          <select value={round} onChange={e => setRound(Number(e.target.value))} style={sel}>
+            {races.map(r => <option key={r.round} value={r.round}>R{r.round} · {shortName(r.name)}</option>)}
+          </select>
+        </label>
       </div>
       <div style={{ fontWeight: 700, marginTop: 10 }}>{raceName}</div>
 
       <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
-        <button onClick={() => setMode('points')} style={{ ...btn, flex: 1, background: mode === 'points' ? 'var(--panel)' : 'var(--panel-2)', borderColor: mode === 'points' ? 'var(--accent)' : 'var(--line)' }}>By points</button>
-        <button onClick={() => setMode('picks')} style={{ ...btn, flex: 1, background: mode === 'picks' ? 'var(--panel)' : 'var(--panel-2)', borderColor: mode === 'picks' ? 'var(--accent)' : 'var(--line)' }}>By picks</button>
+        <button onClick={() => setMode('points')} style={{ ...btn, flex: 1, background: mode === 'points' ? 'var(--panel)' : 'var(--panel-2)', borderColor: mode === 'points' ? 'var(--accent)' : 'var(--line)' }}>Override points</button>
+        <button onClick={() => setMode('picks')} style={{ ...btn, flex: 1, background: mode === 'picks' ? 'var(--panel)' : 'var(--panel-2)', borderColor: mode === 'picks' ? 'var(--accent)' : 'var(--line)' }}>Assign picks</button>
       </div>
 
       {mode === 'points' ? (

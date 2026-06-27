@@ -1,6 +1,6 @@
 import { serverClient } from '@/lib/supabase/server'
 import { syncCalendar, syncRound } from '@/lib/f1/sync'
-import { computePoolStandings, draftOrderFromStandings } from '@/lib/standings'
+import { computeDraftOrder } from '@/lib/standings'
 import { CURRENT_SEASON } from '@/lib/config'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -99,10 +99,13 @@ export async function advanceSeason(today: string) {
 
   const { data: settings } = await db
     .from('league_settings')
-    .select('draft_timing')
+    .select('draft_timing,drivers_per_week,draft_order_type,draft_order_basis')
     .eq('id', 1)
     .maybeSingle()
   const timing = settings?.draft_timing === 'before' ? 'before' : 'after'
+  const rounds = settings?.drivers_per_week ?? 5
+  const snake = settings?.draft_order_type === 'snake'
+  const basis = settings?.draft_order_basis === 'weekly' ? 'weekly' : 'overall'
 
   // Post-Qualifying: hold until this race's qualifying has been synced.
   if (timing === 'after') {
@@ -116,16 +119,15 @@ export async function advanceSeason(today: string) {
     }
   }
 
-  // Open the draft with the pick order auto-set from standings (worst-first).
+  // Open the draft with the pick order auto-set from the configured basis (worst-first).
   const { data: players } = await db.from('players').select('id').order('sort_order')
   const ids = (players ?? []).map((p) => p.id)
-  const standings = await computePoolStandings(ids)
-  const order = draftOrderFromStandings(standings, ids)
+  const order = await computeDraftOrder(ids, basis)
 
   const { error: dErr } = await db
     .from('drafts')
     .upsert(
-      { race_id: candidate.id, pick_order: order, status: 'open', rounds: 5 },
+      { race_id: candidate.id, pick_order: order, status: 'open', rounds, snake },
       { onConflict: 'race_id' },
     )
   if (dErr) throw new Error(`open draft failed: ${dErr.message}`)
