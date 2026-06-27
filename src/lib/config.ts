@@ -20,3 +20,17 @@ export const LEAGUE_NAME = process.env.NEXT_PUBLIC_LEAGUE_NAME ?? 'FART-F1'
  *  bare identifier (letters/digits/underscore), and the schema must be added to the
  *  project's exposed Data API schemas. See docs/SECOND-LEAGUE.md. */
 export const SUPABASE_SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'public'
+
+/** App-master tooling. Each pool is a separate deployment (own Supabase schema +
+ *  Vercel project), so you can't query another league's data from here — but the
+ *  app master can hop between the deployments. Gated by NEXT_PUBLIC_APP_MASTER so
+ *  the cross-league switcher only shows where it's turned on. */
+export const APP_MASTER = process.env.NEXT_PUBLIC_APP_MASTER === '1'
+
+export interface LeagueLink { id: string; name: string; url: string; match: string }
+/** The known pools and their production domains. `match` is a substring of the
+ *  domain used to highlight which league you're currently on. */
+export const LEAGUES: LeagueLink[] = [
+  { id: 'fart-e', name: 'Fart E (ours)', url: 'https://fart-f1.vercel.app', match: 'fart-f1' },
+  { id: 'fart-a', name: 'Fart A', url: 'https://fart-a.vercel.app', match: 'fart-a' },
+]

@@ -21,11 +21,16 @@ interface Settings {
   drivers_per_week: number
   draft_order_type: 'snake' | 'sequential'
   draft_order_basis: 'overall' | 'weekly'
+  draft_open_day: number // 1=Mon … 6=Sat
 }
 const DEFAULTS: Settings = {
   league_name: 'FART-F1', draft_timing: 'after', drivers_per_week: 5,
-  draft_order_type: 'sequential', draft_order_basis: 'overall',
+  draft_order_type: 'sequential', draft_order_basis: 'overall', draft_open_day: 1,
 }
+const DAYS: { value: number; label: string }[] = [
+  { value: 1, label: 'Monday' }, { value: 2, label: 'Tuesday' }, { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' }, { value: 5, label: 'Friday' }, { value: 6, label: 'Saturday' },
+]
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -67,7 +72,7 @@ export default function LeagueSettingsPage() {
 
   useEffect(() => {
     supabase.from('league_settings')
-      .select('league_name,draft_timing,drivers_per_week,draft_order_type,draft_order_basis').eq('id', 1).maybeSingle()
+      .select('league_name,draft_timing,drivers_per_week,draft_order_type,draft_order_basis,draft_open_day').eq('id', 1).maybeSingle()
       .then(({ data }) => { if (data) setS({ ...DEFAULTS, ...data } as Settings); setLoaded(true) })
   }, [])
 
@@ -85,6 +90,7 @@ export default function LeagueSettingsPage() {
       drivers_per_week: drivers,
       draft_order_type: s.draft_order_type,
       draft_order_basis: s.draft_order_basis,
+      draft_open_day: s.draft_open_day,
     }).eq('id', 1)
     if (error) { setMsg(`Error: ${error.message}`); return }
     router.push('/admin')
@@ -105,6 +111,15 @@ export default function LeagueSettingsPage() {
           { value: 'after', label: 'Post-Qualifying' },
         ]} />
       </Field>
+
+      {s.draft_timing === 'before' && (
+        <Field label="Draft opens on" hint="Pre-Qualifying only: the weekday the Draft Floor opens in each race week. The autopilot opens it (and pushes everyone) on this day.">
+          <select value={s.draft_open_day} onChange={e => set('draft_open_day', Number(e.target.value))}
+            style={{ ...inp, width: 160 }} disabled={!loaded}>
+            {DAYS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </Field>
+      )}
 
       <Field label="Drivers per week" hint="How many drivers each player drafts each race.">
         <input type="number" min={1} max={10} value={s.drivers_per_week}

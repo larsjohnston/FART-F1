@@ -3,7 +3,7 @@ import { useEffect, useState, CSSProperties } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
-import { CURRENT_SEASON } from '@/lib/config'
+import { CURRENT_SEASON, APP_MASTER, LEAGUES } from '@/lib/config'
 import NamePicker from '@/components/NamePicker'
 
 const btn: CSSProperties = {
@@ -25,7 +25,13 @@ export default function AdminPage() {
   const { actingAs } = usePlayer()
   const [current, setCurrent] = useState<Race | null>(null)
   const [calendarLoaded, setCalendarLoaded] = useState(false)
+  const [host, setHost] = useState('')
   const [msg, setMsg] = useState('')
+
+  // Read the host after mount (avoids SSR/hydration mismatch) to highlight which
+  // league this deployment is.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setHost(window.location.host) }, [])
 
   async function loadCurrentRace() {
     const { data } = await supabase
@@ -91,11 +97,35 @@ export default function AdminPage() {
     )
   }
 
+  async function openDraftNow() {
+    setMsg('Opening the draft…')
+    const res = await fetch('/api/draft/open', { method: 'POST' }).then(r => r.json())
+    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+    await loadCurrentRace()
+    setMsg(res.message ?? (res.opened ? `Draft opened for round ${res.opened}.` : 'Nothing to open.'))
+  }
+
   const city = current ? shortName(current.name) : '—'
 
   return (
     <main style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22 }}>Commissioner</h1>
+
+      {APP_MASTER && (
+        <section style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, letterSpacing: 1, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>App master · League</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {LEAGUES.map(l => {
+              const isCurrent = host.includes(l.match)
+              return isCurrent ? (
+                <span key={l.id} style={{ ...btn, flex: 1, cursor: 'default', opacity: 1 }}>{l.name} ●</span>
+              ) : (
+                <a key={l.id} href={`${l.url}/admin`} style={{ ...ghost, flex: 1 }}>{l.name} →</a>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <section style={{ marginTop: 16, display: 'grid', gap: 10 }}>
         <Link href="/admin/league" style={navBtn}>⚙️ League Settings <span>→</span></Link>
@@ -110,12 +140,14 @@ export default function AdminPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={sync} style={btn} disabled={!current}>Sync</button>
+          <button onClick={openDraftNow} style={btn}>Open draft now</button>
           {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
           <button onClick={advanceNow} style={ghost}>Advance now</button>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-          The calendar loads automatically. Autopilot runs daily and opens each draft on its own —
-          use Sync to pull results now, or Advance now to move the season forward immediately.
+          The calendar loads automatically and the autopilot opens each draft on its own (and pushes everyone
+          when it does). <b>Open draft now</b> opens the next race&rsquo;s draft immediately; <b>Sync</b> pulls fresh
+          results/qualifying; <b>Advance now</b> runs the full autopilot once.
         </p>
       </section>
 
