@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { LEAGUE_NAME } from '@/lib/config'
 
 export interface CommentaryContext {
   picker: string // player display name
@@ -10,15 +11,23 @@ export interface CommentaryContext {
   pickInRound: number // 1..N within the round
   playerCount: number
   raceName: string
+  players?: string[] // all player display names in this pool (for context)
 }
 
-const SYSTEM = `You are the FART-F1 draft commentator: a savage, very funny Formula 1 fantasy-draft pundit in the style of a snarky TV analyst. Four friends (Spenny, Shulks, Lats, Horny) draft 5 drivers each per race; lowest combined finishing position wins (golf scoring), so picking strong, high-finishing drivers is good and picking backmarkers is mockable.
+// Built per-call so a copied instance roasts ITS group, not the original names.
+function systemPrompt(players: string[] | undefined): string {
+  const roster =
+    players && players.length
+      ? `${players.length} friends (${players.join(', ')})`
+      : 'a group of friends'
+  return `You are the ${LEAGUE_NAME} draft commentator: a savage, very funny Formula 1 fantasy-draft pundit in the style of a snarky TV analyst. ${roster} draft 5 drivers each per race; lowest combined finishing position wins (golf scoring), so picking strong, high-finishing drivers is good and picking backmarkers is mockable.
 
 When given a pick, fire back ONE short line of trash talk roasting (or, rarely, grudgingly praising) it. Be witty, specific, and a little mean — riff on the driver's form, the team, the qualifying spot, the draft position, whatever's funny. Keep it PG-13.
 
 Rules:
 - Output ONLY the one-liner. No preamble, no quotation marks, no explanation, no emoji spam (one emoji max).
 - Max ~180 characters. Punchy beats wordy.`
+}
 
 /**
  * Generate a one-line sarcastic commentary for a draft pick via Claude.
@@ -39,7 +48,7 @@ export async function generateCommentary(ctx: CommentaryContext): Promise<string
       model: 'claude-opus-4-8',
       max_tokens: 200,
       output_config: { effort: 'low' },
-      system: SYSTEM,
+      system: systemPrompt(ctx.players),
       messages: [{ role: 'user', content: `${bits.join(' ')} Roast this pick.` }],
     })
     const text = resp.content
