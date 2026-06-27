@@ -6,6 +6,29 @@ Mobile-first fantasy F1 draft pool for **4 players** (display names: **Spenny, S
 Each race weekend players draft 5 drivers; **golf scoring** — lowest cumulative finishing
 positions wins. `CURRENT_SEASON` lives in `src/lib/config.ts` (currently 2026).
 
+## Multiple pools (single-tenant by copy) — ⚠️ THERE ARE TWO LIVE POOLS
+The app is single-tenant; a second group runs as a **separate deployment of the same repo**
+pointed at its own data. Pools are distinguished by env (`src/lib/config.ts`):
+`LEAGUE_ID` / `LEAGUE_NAME` (identity + branding + AI-commentary roster) and
+`SUPABASE_SCHEMA` (which Postgres schema the tables live in; both Supabase clients +
+realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
+- **FART E** — the original pool. Vercel project `fart-f1`, schema `public`,
+  domain `fart-f1.vercel.app`.
+- **FART A** — second pool. Vercel project `fart-a` (`prj_nh4c2HJ2NtMhiQJagER1QW6jTEhL`),
+  schema `fart_a`, domain **`fart-a.vercel.app`**, players Tamags (commissioner)/Ned/Tup/Mendo.
+  Both pools share the **same Supabase project** (`oxydbpdbhdfopdafhcxh`) — separate schemas,
+  isolated data, but shared DB instance / connection limits / inactivity-pause fate.
+- **⚠️ Consequences for any future change:**
+  - **Code/deploys:** production for each pool is deployed by repoId to its own Vercel
+    project — a code change must be deployed to **both** `fart-f1` and `fart-a`.
+  - **DB migrations:** a new migration must be applied to **both** `public` and `fart_a`
+    (run it with `set search_path = fart_a, extensions;` for the second schema; the realtime
+    `alter publication` lines are hard-coded to `public`, so add `fart_a.<table>` explicitly —
+    see `supabase/second-pool-schema.sql`). New realtime schemas must also be in the project's
+    exposed Data API schemas (`db_schema` via the Management API `/postgrest` config).
+  - See `docs/SECOND-LEAGUE.md` (standup runbook + cross-league stats merge spec) and
+    `supabase/second-pool-schema.sql` (the schema setup that was run for FART A).
+
 ## Scoring rule (`src/lib/scoring/score.ts`)
 - Drop the undrafted drivers, then rank the drafted field by finishing position
   (best drafted finisher = 1 pt … worst = N). Drivers with no result score 0.
