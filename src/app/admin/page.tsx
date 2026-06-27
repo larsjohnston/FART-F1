@@ -3,7 +3,7 @@ import { useEffect, useState, CSSProperties } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
-import { CURRENT_SEASON } from '@/lib/config'
+import { CURRENT_SEASON, APP_MASTER, LEAGUES } from '@/lib/config'
 import NamePicker from '@/components/NamePicker'
 
 const btn: CSSProperties = {
@@ -25,7 +25,13 @@ export default function AdminPage() {
   const { actingAs } = usePlayer()
   const [current, setCurrent] = useState<Race | null>(null)
   const [calendarLoaded, setCalendarLoaded] = useState(false)
+  const [host, setHost] = useState('')
   const [msg, setMsg] = useState('')
+
+  // Read the host after mount (avoids SSR/hydration mismatch) to highlight which
+  // league this deployment is.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setHost(window.location.host) }, [])
 
   async function loadCurrentRace() {
     const { data } = await supabase
@@ -104,6 +110,22 @@ export default function AdminPage() {
   return (
     <main style={{ padding: 16 }}>
       <h1 style={{ fontSize: 22 }}>Commissioner</h1>
+
+      {APP_MASTER && (
+        <section style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, letterSpacing: 1, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>App master · League</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {LEAGUES.map(l => {
+              const isCurrent = host.includes(l.match)
+              return isCurrent ? (
+                <span key={l.id} style={{ ...btn, flex: 1, cursor: 'default', opacity: 1 }}>{l.name} ●</span>
+              ) : (
+                <a key={l.id} href={`${l.url}/admin`} style={{ ...ghost, flex: 1 }}>{l.name} →</a>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <section style={{ marginTop: 16, display: 'grid', gap: 10 }}>
         <Link href="/admin/league" style={navBtn}>⚙️ League Settings <span>→</span></Link>
