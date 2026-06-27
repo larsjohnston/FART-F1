@@ -1,5 +1,6 @@
 'use client'
 import { supabase } from '@/lib/supabase/client'
+import { SUPABASE_SCHEMA } from '@/lib/config'
 import { applyPick, onClock } from './engine'
 import type { DraftState } from './types'
 
@@ -61,7 +62,7 @@ export function subscribePicks(draftId: string, onChange: () => void) {
     .channel(`draft-${draftId}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'picks', filter: `draft_id=eq.${draftId}` },
+      { event: '*', schema: SUPABASE_SCHEMA, table: 'picks', filter: `draft_id=eq.${draftId}` },
       onChange,
     )
     .subscribe()
@@ -88,7 +89,7 @@ export function subscribeCommentary(draftId: string, onChange: () => void) {
     .channel(`commentary-${draftId}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'commentary', filter: `draft_id=eq.${draftId}` },
+      { event: '*', schema: SUPABASE_SCHEMA, table: 'commentary', filter: `draft_id=eq.${draftId}` },
       onChange,
     )
     .subscribe()

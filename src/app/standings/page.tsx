@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
-import { CURRENT_SEASON } from '@/lib/config'
+import { CURRENT_SEASON, SUPABASE_SCHEMA } from '@/lib/config'
 
 interface SeasonRow { id: string; name: string; color: string; points: number; weeklyWins: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
@@ -166,8 +166,8 @@ export default function StandingsPage() {
     }
     const ch = supabase
       .channel('standings-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'results' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'picks' }, refresh)
+      .on('postgres_changes', { event: '*', schema: SUPABASE_SCHEMA, table: 'results' }, refresh)
+      .on('postgres_changes', { event: '*', schema: SUPABASE_SCHEMA, table: 'picks' }, refresh)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [loadSeasonAndOptions, loadWeek])

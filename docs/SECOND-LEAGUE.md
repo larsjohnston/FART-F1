@@ -27,6 +27,15 @@ now reads the names from the database, and each deployment carries a `LEAGUE_ID`
 
 ## Part 1 — Stand up the second pool
 
+> **Two ways to host the second pool's data:**
+> - **1A. Its own Supabase project** — fully independent infra. Best if you have a
+>   project slot free (Supabase free tier caps you at 2 projects).
+> - **1B. A second schema in the existing project** — when you're out of free
+>   project slots. The two pools share one database (and its connection limits /
+>   inactivity-pause fate), but their data stays isolated in separate schemas. This
+>   is what `NEXT_PUBLIC_SUPABASE_SCHEMA` + `supabase/second-pool-schema.sql` exist
+>   for. Skip to **Part 1B** for this path.
+
 ### 1. New Supabase project
 - Create a brand-new Supabase project for the new group (free tier is fine).
 - Grab its **Project URL**, **anon key**, **service-role key**, and the **direct DB
@@ -81,6 +90,38 @@ node scripts/apply-migration.mjs /tmp/seed.league2.sql
 - Open the new deployment, pick the commissioner name, go to `/admin`.
 - **Load Calendar** to pull the current season's rounds, then **Sync** the current
   race. The autopilot takes over from there.
+
+---
+
+## Part 1B — Second schema in the existing project (out of project slots)
+
+Host the second pool in its own Postgres schema (e.g. `pool2`) inside the current
+FART-F1 Supabase project. The code already supports this: set
+`NEXT_PUBLIC_SUPABASE_SCHEMA` on the new deployment and every query + realtime
+subscription targets that schema (defaults to `public`, so the original pool is
+unaffected).
+
+### 1. Create + populate the schema
+Edit `supabase/second-pool-schema.sql` — replace `pool2` with your schema name and
+fill in the 4 player names — then:
+1. Run section 1 (creates the schema + grants usage).
+2. Apply migrations `0001`..`0011` **into that schema**: run each file with
+   `set search_path = pool2, extensions;` prepended (the migrations use unqualified
+   table names, so the search_path decides where they're created).
+3. Run sections 3–5 (table grants, realtime publication, seed).
+
+### 2. Expose the schema to the Data API
+Supabase dashboard → Settings → API → **Exposed schemas** → add your schema name
+(alongside `public`, `graphql_public`). This lets PostgREST serve it. *(Briefly
+restarts the API for the whole project — a few seconds' blip for the live pool.)*
+
+### 3. New Vercel project
+Same as Part 1, steps 3–4 below, **with two differences**:
+- Reuse the **existing** project's `NEXT_PUBLIC_SUPABASE_URL`, anon key, and
+  service-role key (it's the same Supabase project).
+- Add `NEXT_PUBLIC_SUPABASE_SCHEMA = pool2` (your schema name) to all targets.
+
+Then do the env-var table and first-run setup from Part 1 as normal.
 
 ---
 
