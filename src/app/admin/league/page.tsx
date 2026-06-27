@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
 import NamePicker from '@/components/NamePicker'
@@ -59,6 +60,7 @@ function Toggle<T extends string>({ value, onChange, options }: {
 
 export default function LeagueSettingsPage() {
   const { actingAs } = usePlayer()
+  const router = useRouter()
   const [s, setS] = useState<Settings>(DEFAULTS)
   const [loaded, setLoaded] = useState(false)
   const [msg, setMsg] = useState('')
@@ -84,7 +86,8 @@ export default function LeagueSettingsPage() {
       draft_order_type: s.draft_order_type,
       draft_order_basis: s.draft_order_basis,
     }).eq('id', 1)
-    setMsg(error ? `Error: ${error.message}` : 'Saved. New drafts use these rules.')
+    if (error) { setMsg(`Error: ${error.message}`); return }
+    router.push('/admin')
   }
 
   return (
