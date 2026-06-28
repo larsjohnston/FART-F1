@@ -40,8 +40,8 @@ const PCOLS: PCol[] = [
   { key: 'name', label: ['Player', ''], num: false, align: 'left', defDir: 'asc', get: p => p.name, cell: p => <span style={{ fontWeight: 700 }}>{p.name}</span> },
   { key: 'avgPoints', label: ['Avg', 'Pts'], num: true, align: 'right', defDir: 'asc', get: p => p.avgPoints, cell: p => (p.avgPoints != null ? String(p.avgPoints) : '–') },
   { key: 'mostPicked', label: ['Most', 'Picked'], num: false, align: 'left', defDir: 'asc', get: p => p.mostPicked, cell: p => p.mostPicked ?? '–' },
-  { key: 'firsts', label: ['1st', 'wkly'], num: true, align: 'right', defDir: 'desc', get: p => p.firsts, cell: p => String(p.firsts) },
-  { key: 'lasts', label: ['Last', 'wkly'], num: true, align: 'right', defDir: 'desc', get: p => p.lasts, cell: p => String(p.lasts) },
+  { key: 'firsts', label: ['Weekly', 'Wins'], num: true, align: 'right', defDir: 'desc', get: p => p.firsts, cell: p => String(p.firsts) },
+  { key: 'lasts', label: ['Weekly', 'Lasts'], num: true, align: 'right', defDir: 'desc', get: p => p.lasts, cell: p => String(p.lasts) },
   { key: 'championships', label: ['FART', 'titles'], num: true, align: 'right', defDir: 'desc', get: p => p.championships, cell: p => (p.championships > 0 ? `🏆 ${p.championships}` : '0') },
 ]
 
