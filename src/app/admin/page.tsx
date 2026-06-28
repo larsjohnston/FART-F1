@@ -139,15 +139,21 @@ export default function AdminPage() {
           {current ? `R${current.round} · ${city}` : (calendarLoaded ? 'No races yet' : 'Loading…')}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={sync} style={btn} disabled={!current}>Sync</button>
           <button onClick={openDraftNow} style={btn}>Open draft now</button>
           {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
           <button onClick={advanceNow} style={ghost}>Advance now</button>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
           The calendar loads automatically and the autopilot opens each draft on its own (and pushes everyone
-          when it does). <b>Open draft now</b> opens the next race&rsquo;s draft immediately; <b>Sync</b> pulls fresh
-          results/qualifying; <b>Advance now</b> runs the full autopilot once.
+          when it does). <b>Open draft now</b> opens the next race&rsquo;s draft immediately; <b>Advance now</b>
+          runs the full autopilot once.
+        </p>
+      </section>
+
+      <section style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
+        <button onClick={sync} style={btn} disabled={!current}>Update race results</button>
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
+          Note: race results are delayed approximately 30 minutes.
         </p>
       </section>
 
