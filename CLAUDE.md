@@ -99,11 +99,21 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   Apple/viewport meta in `app/layout.tsx` (incl. legacy `apple-mobile-web-app-capable`),
   `public/sw.js` (service worker — installability + offline page; **never caches `/api` or
   Supabase**, so live data stays fresh), `public/offline.html`, `components/ServiceWorker.tsx`.
-- **iOS fixed-element gotcha:** the `BottomNav` (`position: fixed; bottom: 0`) got stranded
-  mid-page during momentum scroll on iOS Safari. Fix = promote it to its own compositor layer
-  (`transform: translateZ(0)` + `will-change: transform`) + `z-index` + `env(safe-area-inset-bottom)`
-  padding (body bottom padding bumped to match). Desktop/headless can't reproduce iOS compositing
-  — verify nav-pinning changes on a real iPhone.
+- **BottomNav pinning (iOS) — app-shell layout, NOT `position: fixed`.** A fixed bottom bar gets
+  stranded mid-page during iOS Safari momentum scroll, and the `transform: translateZ(0)` /
+  `will-change` compositor-layer hack only *partly* mitigated it (still detached on fast flicks).
+  **The real fix:** the whole app is a fixed-height flex column and only an inner container scrolls,
+  so the nav is a static footer that physically cannot move. In `app/layout.tsx` the `<body>` is
+  `height: 100dvh; display: flex; flex-direction: column; overflow: hidden`; `{children}` live in a
+  single `flex: 1; min-height: 0; overflow-y: auto` scroll container; `BottomNav` is the last flex
+  child (`flex-shrink: 0`, `env(safe-area-inset-bottom)` padding). **Rules so this never regresses:**
+  (1) never give `BottomNav` `position: fixed`/`sticky` again — keep it a static flex child;
+  (2) the document body must not scroll — put any new full-page scrolling inside that one container;
+  (3) don't put `transform`/`filter`/`will-change` on `body` or the scroll container (it would make
+  any descendant `position: fixed` scroll with content — the same stranding bug);
+  (4) pages no longer need bottom padding to clear the nav (the nav takes real layout space).
+  Trade-off: the Safari URL bar stays put (the body doesn't scroll) — fine for this PWA-first app.
+  Desktop/headless can't reproduce iOS compositing — verify nav-pinning changes on a real iPhone.
 
 ## Push notifications (Web Push)
 - During a draft: **"🏁 You're on the clock"** to the next player + **"a pick was made"** to
