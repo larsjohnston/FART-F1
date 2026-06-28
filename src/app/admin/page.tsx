@@ -151,9 +151,13 @@ export default function AdminPage() {
       </section>
 
       <section style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
-        <button onClick={sync} style={btn} disabled={!current}>Update race results</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={sync} style={btn} disabled={!current}>Update race results</button>
+          {current && <Link href={`/admin/results?round=${current.round}`} style={ghost}>Enter results manually →</Link>}
+        </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-          Note: race results are delayed approximately 30 minutes.
+          Note: race results are delayed approximately 30 minutes. Enter them manually to score now —
+          the official results overwrite your entries when they post.
         </p>
       </section>
 
