@@ -13,6 +13,7 @@ interface PlayerStat {
   id: string; name: string; color: string; picks: number; avgFinish: number | null
   topPicks: TopPick[]; bogey: string | null
   best: { driver: string; finish: number } | null; worst: { driver: string; finish: number } | null; weeklyWins: number
+  avgPoints: number | null; mostPicked: string | null; firsts: number; lasts: number; championships: number
 }
 interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; error?: string }
 
@@ -140,30 +141,27 @@ export default function StatsPage() {
 
       {data && view === 'players' && (
         <>
+          <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+            This season&apos;s avg points/race &amp; weekly firsts/lasts; FART titles are all-time. Points are golf-scored — lower is better.
+          </p>
           <div style={{ display: 'grid', gap: 10 }}>
             {data.players.map(p => (
               <div key={p.id} style={{ border: '1px solid var(--line)', borderLeft: `4px solid ${p.color}`, borderRadius: 10, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span style={{ flex: 1, fontWeight: 800, fontSize: 16 }}>{p.name}</span>
-                  <span style={{ fontSize: 12, color: 'var(--warn)' }}>{p.weeklyWins} week win{p.weeklyWins === 1 ? '' : 's'}</span>
+                  {p.championships > 0 && (
+                    <span style={{ fontSize: 13, color: 'var(--warn)', fontWeight: 700 }} title="FART championships">
+                      {'🏆'.repeat(Math.min(p.championships, 5))} {p.championships}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 6, fontSize: 12 }}>
-                  <Stat label="Picks" value={String(p.picks)} />
-                  <Stat label="Avg finish" value={p.avgFinish != null ? `P${p.avgFinish}` : '–'} />
-                  <Stat label="Go-to" value={p.bogey ?? '–'} />
+                  <Stat label="Avg pts/race" value={p.avgPoints != null ? String(p.avgPoints) : '–'} />
+                  <Stat label="Most picked" value={p.mostPicked ?? '–'} />
+                  <Stat label="1st (weekly)" value={String(p.firsts)} />
+                  <Stat label="Last (weekly)" value={String(p.lasts)} />
+                  <Stat label="FART titles" value={String(p.championships)} />
                 </div>
-                {(p.best || p.worst) && (
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                    {p.best && <>Best: {p.best.driver} P{p.best.finish}</>}
-                    {p.best && p.worst ? '  ·  ' : ''}
-                    {p.worst && <>Worst: {p.worst.driver} P{p.worst.finish}</>}
-                  </div>
-                )}
-                {p.topPicks.length > 0 && (
-                  <div style={{ fontSize: 12, marginTop: 4 }}>
-                    Most drafted: {p.topPicks.map(t => `${t.name} (${t.count})`).join(', ')}
-                  </div>
-                )}
               </div>
             ))}
           </div>
