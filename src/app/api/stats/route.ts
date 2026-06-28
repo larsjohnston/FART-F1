@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
     const [
       { data: players }, { data: picksRaw }, { data: drafts }, { data: races },
       { data: resultsRaw }, { data: qualiRaw }, { data: driverRows }, { data: cons },
+      { data: archiveRP },
     ] = await Promise.all([
       db.from('players').select('id,name,color').order('sort_order'),
       db.from('picks').select('player_id,driver_id,draft_id'),
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
       db.from('qualifying').select('race_id,driver_id,position'),
       db.from('drivers').select('id,given_name,family_name,constructor_id'),
       db.from('constructors').select('id,name'),
+      db.from('archive_race_points').select('season,player_id,points'),
     ])
 
     const roundByRace = new Map((races ?? []).map(r => [r.id, r.round]))
@@ -55,9 +57,13 @@ export async function GET(req: NextRequest) {
     // finishing position (winner = 1 … backmarker = N) and sum across the season.
     // Lower = consistently finishing near the front. ----------
     const poolPointsByDriver = new Map<string, number>()
-    // ---------- Weekly wins: still the POOL rule — drop undrafted drivers, rank
-    // the drafted field, lowest weekly total wins. ----------
-    const winsById = new Map<string, number>()
+    // ---------- Weekly wins/lasts + points per race: the POOL rule — drop
+    // undrafted drivers, rank the drafted field; lowest weekly total wins,
+    // highest is last. pointsById/racesScored give avg points per race. ----------
+    const winsById = new Map<string, number>()   // weekly firsts
+    const lastsById = new Map<string, number>()  // weekly lasts
+    const pointsById = new Map<string, number>() // season pool points
+    let racesScored = 0
     for (const r of races ?? []) {
       const finish = new Map<string, number>()
       for (const res of resultsRaw ?? []) if (res.race_id === r.id) finish.set(res.driver_id, res.finish_position)
@@ -78,9 +84,33 @@ export async function GET(req: NextRequest) {
         if (pt != null) totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + pt)
       }
       if (totals.size) {
+        racesScored += 1
+        for (const [pid, t] of totals) pointsById.set(pid, (pointsById.get(pid) ?? 0) + t)
         const min = Math.min(...totals.values())
-        for (const [pid, t] of totals) if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
+        const max = Math.max(...totals.values())
+        for (const [pid, t] of totals) {
+          if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
+          // Only count a "last" when someone actually trailed (not an all-tie week).
+          if (max > min && t === max) lastsById.set(pid, (lastsById.get(pid) ?? 0) + 1)
+        }
       }
+    }
+
+    // ---------- FART championships: titles from completed past seasons in the
+    // archive (lowest season total wins; ties share). The in-progress current
+    // season isn't a title until it's done, so it's excluded. ----------
+    const archSeasonTotals = new Map<number, Map<string, number>>()
+    for (const r of archiveRP ?? []) {
+      if (r.season >= CURRENT_SEASON) continue
+      const m = archSeasonTotals.get(r.season) ?? new Map<string, number>()
+      m.set(r.player_id, (m.get(r.player_id) ?? 0) + r.points)
+      archSeasonTotals.set(r.season, m)
+    }
+    const championshipsById = new Map<string, number>()
+    for (const totals of archSeasonTotals.values()) {
+      if (!totals.size) continue
+      const min = Math.min(...totals.values())
+      for (const [pid, t] of totals) if (t === min) championshipsById.set(pid, (championshipsById.get(pid) ?? 0) + 1)
     }
 
     // ---------- Driver stats (from our own DB) ----------
@@ -176,6 +206,11 @@ export async function GET(req: NextRequest) {
         id: pl.id, name: pl.name, color: pl.color, picks: mine.length,
         avgFinish: finN ? round1(finSum / finN) : null,
         topPicks, bogey: topPicks[0]?.name ?? null, best, worst, weeklyWins: 0,
+        avgPoints: racesScored ? round1((pointsById.get(pl.id) ?? 0) / racesScored) : null,
+        mostPicked: topPicks[0]?.name ?? null,
+        firsts: winsById.get(pl.id) ?? 0,
+        lasts: lastsById.get(pl.id) ?? 0,
+        championships: championshipsById.get(pl.id) ?? 0,
       }
     })
 
