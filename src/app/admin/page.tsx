@@ -46,20 +46,25 @@ export default function AdminPage() {
     setCurrent(drafting ?? (happened.length ? happened[happened.length - 1] : rs[0]))
   }
 
-  // Auto-load the calendar when the commissioner opens this page, then show the
-  // current race. No more manual "Load Calendar" button.
+  // Run the autopilot automatically when the commissioner opens this page (in
+  // addition to the daily cron): loads the calendar, syncs, completes finished
+  // races and opens the next draft when its timing gate is met. Idempotent — no
+  // manual "Advance now" button needed.
   useEffect(() => {
     if (!actingAs?.is_commissioner) return
     let cancelled = false
     ;(async () => {
       await loadCurrentRace() // show something immediately
+      let opened: number | null = null
       try {
-        await fetch('/api/calendar', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ season: CURRENT_SEASON }),
-        })
-      } catch { /* best-effort — autopilot also keeps it loaded */ }
-      if (!cancelled) { setCalendarLoaded(true); await loadCurrentRace() }
+        const res = await fetch('/api/cron', { method: 'POST' }).then(r => r.json())
+        opened = res?.opened ?? null
+      } catch { /* best-effort — the daily cron also keeps things moving */ }
+      if (!cancelled) {
+        setCalendarLoaded(true)
+        await loadCurrentRace()
+        if (opened) setMsg(`Draft opened for round ${opened}. Players can pick now.`)
+      }
     })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,18 +88,6 @@ export default function AdminPage() {
         : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',
     )
     await loadCurrentRace()
-  }
-
-  async function advanceNow() {
-    setMsg('Advancing…')
-    const res = await fetch('/api/cron', { method: 'POST' }).then(r => r.json())
-    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
-    await loadCurrentRace()
-    setMsg(
-      res.opened
-        ? `Advanced — opened the draft for round ${res.opened}. Players can pick now.`
-        : `Up to date — ${(res.log ?? []).slice(-1)[0] ?? 'nothing to advance'}.`,
-    )
   }
 
   async function openDraftNow() {
@@ -141,12 +134,11 @@ export default function AdminPage() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={openDraftNow} style={btn}>Open draft now</button>
           {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
-          <button onClick={advanceNow} style={ghost}>Advance now</button>
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
-          The calendar loads automatically and the autopilot opens each draft on its own (and pushes everyone
-          when it does). <b>Open draft now</b> opens the next race&rsquo;s draft immediately; <b>Advance now</b>
-          runs the full autopilot once.
+          The season runs on autopilot — it advances daily and again every time you open this page (syncing,
+          completing races and opening each draft on its timing, with a push to everyone). <b>Open draft now</b>
+          opens the next race&rsquo;s draft immediately if you don&rsquo;t want to wait.
         </p>
       </section>
 
