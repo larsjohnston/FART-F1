@@ -17,10 +17,6 @@ interface PlayerStat {
 }
 interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; error?: string }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return <span><span style={{ color: 'var(--muted)' }}>{label}:</span> <b>{value}</b></span>
-}
-
 type Col = {
   key: string; label: [string, string]; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
   get: (d: DriverStat) => number | string | null
@@ -35,11 +31,26 @@ const COLS: Col[] = [
   { key: 'form', label: ['Last 3', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
 ]
 
+type PCol = {
+  key: string; label: [string, string]; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
+  get: (p: PlayerStat) => number | string | null
+  cell: (p: PlayerStat) => ReactNode
+}
+const PCOLS: PCol[] = [
+  { key: 'name', label: ['Player', ''], num: false, align: 'left', defDir: 'asc', get: p => p.name, cell: p => <span style={{ fontWeight: 700 }}>{p.name}</span> },
+  { key: 'avgPoints', label: ['Avg', 'Pts'], num: true, align: 'right', defDir: 'asc', get: p => p.avgPoints, cell: p => (p.avgPoints != null ? String(p.avgPoints) : '–') },
+  { key: 'mostPicked', label: ['Most', 'Picked'], num: false, align: 'left', defDir: 'asc', get: p => p.mostPicked, cell: p => p.mostPicked ?? '–' },
+  { key: 'firsts', label: ['1st', 'wkly'], num: true, align: 'right', defDir: 'desc', get: p => p.firsts, cell: p => String(p.firsts) },
+  { key: 'lasts', label: ['Last', 'wkly'], num: true, align: 'right', defDir: 'desc', get: p => p.lasts, cell: p => String(p.lasts) },
+  { key: 'championships', label: ['FART', 'titles'], num: true, align: 'right', defDir: 'desc', get: p => p.championships, cell: p => (p.championships > 0 ? `🏆 ${p.championships}` : '0') },
+]
+
 export default function StatsPage() {
   const [view, setView] = useState<'drivers' | 'players'>('drivers')
   const [data, setData] = useState<StatsData | null>(null)
   const [err, setErr] = useState('')
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'avgFinish', dir: 'asc' })
+  const [psort, setPsort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'avgPoints', dir: 'asc' })
 
   useEffect(() => {
     (async () => {
@@ -67,6 +78,9 @@ export default function StatsPage() {
   function toggleSort(c: Col) {
     setSort(s => (s.key === c.key ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: c.defDir }))
   }
+  function togglePsort(c: PCol) {
+    setPsort(s => (s.key === c.key ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: c.defDir }))
+  }
 
   const sortCol = COLS.find(c => c.key === sort.key) ?? COLS[1]
   const sortedDrivers = data
@@ -77,6 +91,18 @@ export default function StatsPage() {
         if (av == null) return 1
         if (bv == null) return -1
         return sort.dir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number)
+      })
+    : []
+
+  const psortCol = PCOLS.find(c => c.key === psort.key) ?? PCOLS[1]
+  const sortedPlayers = data
+    ? [...data.players].sort((a, b) => {
+        const av = psortCol.get(a), bv = psortCol.get(b)
+        if (!psortCol.num) return psort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return psort.dir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number)
       })
     : []
 
@@ -142,28 +168,47 @@ export default function StatsPage() {
       {data && view === 'players' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            Lifetime — all seasons (2022–present). Points are golf-scored — lower is better.
+            Lifetime — all seasons (2022–present). Tap a column to sort. Points are golf-scored — lower is better.
           </p>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {data.players.map(p => (
-              <div key={p.id} style={{ border: '1px solid var(--line)', borderLeft: `4px solid ${p.color}`, borderRadius: 10, padding: '10px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ flex: 1, fontWeight: 800, fontSize: 16 }}>{p.name}</span>
-                  {p.championships > 0 && (
-                    <span style={{ fontSize: 13, color: 'var(--warn)', fontWeight: 700 }} title="FART championships">
-                      {'🏆'.repeat(Math.min(p.championships, 5))} {p.championships}
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 6, fontSize: 12 }}>
-                  <Stat label="Avg pts/race" value={p.avgPoints != null ? String(p.avgPoints) : '–'} />
-                  <Stat label="Most picked" value={p.mostPicked ?? '–'} />
-                  <Stat label="1st (weekly)" value={String(p.firsts)} />
-                  <Stat label="Last (weekly)" value={String(p.lasts)} />
-                  <Stat label="FART titles" value={String(p.championships)} />
-                </div>
-              </div>
-            ))}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {PCOLS.map(c => (
+                    <th
+                      key={c.key}
+                      onClick={() => togglePsort(c)}
+                      style={{
+                        textAlign: c.align, padding: '6px 6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                        fontWeight: 600, borderBottom: '1px solid var(--line)', verticalAlign: 'bottom',
+                        color: psort.key === c.key ? 'var(--text)' : 'var(--muted)',
+                      }}
+                    >
+                      <div>{c.label[0]}</div>
+                      <div>{c.label[1]}{psort.key === c.key ? (psort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPlayers.map(p => (
+                  <tr key={p.id}>
+                    {PCOLS.map((c, i) => (
+                      <td
+                        key={c.key}
+                        style={{
+                          textAlign: c.align, padding: '6px 6px', whiteSpace: 'nowrap', verticalAlign: 'middle',
+                          borderBottom: '1px solid var(--line)',
+                          borderLeft: i === 0 ? `3px solid ${p.color}` : undefined,
+                        }}
+                      >
+                        {c.cell(p)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           {data.mostDrafted.length > 0 && (
             <div style={{ marginTop: 16 }}>
