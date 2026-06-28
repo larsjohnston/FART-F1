@@ -13,13 +13,13 @@ const TABS = [
 export default function BottomNav() {
   const path = usePathname()
   return (
-    <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: 520, margin: '0 auto',
-      display: 'flex', background: 'var(--panel)', borderTop: '1px solid var(--line)',
-      // Promote to its own compositor layer so iOS Safari keeps it pinned to the
-      // viewport while scrolling — without this the fixed bar gets stranded
-      // mid-page during momentum scroll. Also clear the home-indicator safe area.
-      transform: 'translateZ(0)', willChange: 'transform',
-      paddingBottom: 'env(safe-area-inset-bottom)', zIndex: 50 }}>
+    // Static flex footer inside the app-shell column (see layout.tsx) — NOT
+    // position:fixed. The document body doesn't scroll; the content container
+    // above does, so this bar is always physically pinned to the bottom and can
+    // never get stranded mid-page during iOS momentum scroll. Don't reintroduce
+    // position:fixed here. Clears the home-indicator safe area.
+    <nav style={{ flexShrink: 0, display: 'flex', background: 'var(--panel)', borderTop: '1px solid var(--line)',
+      paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {TABS.map(t => {
         const active = path?.startsWith(t.href) ?? false
         return (

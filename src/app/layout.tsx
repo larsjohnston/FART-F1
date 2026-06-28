@@ -30,8 +30,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ maxWidth: 520, margin: '0 auto', minHeight: '100dvh', paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}>
-        <PlayerProvider>{children}</PlayerProvider>
+      {/* App shell: a fixed-height flex column whose ONLY scrolling area is the
+          inner content container. The BottomNav is a static flex footer — never
+          position:fixed — so it physically cannot detach during iOS momentum
+          scroll. See CLAUDE.md "BottomNav pinning". */}
+      <body style={{ maxWidth: 520, margin: '0 auto', height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <PlayerProvider>{children}</PlayerProvider>
+        </div>
         <BottomNav />
         <ServiceWorker />
       </body>
