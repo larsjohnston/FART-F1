@@ -34,3 +34,8 @@ export const LEAGUES: LeagueLink[] = [
   { id: 'fart-e', name: 'Fart E (ours)', url: 'https://fart-f1.vercel.app', match: 'fart-f1' },
   { id: 'fart-a', name: 'Fart A', url: 'https://fart-a.vercel.app', match: 'fart-a' },
 ]
+
+/** Boston Pizza "Beer Tab" reward on the Championship board (3rd/4th cover the
+ *  tab for 1st/2nd). Specific to FART E; other pools have their own reward
+ *  systems, so disable it per-deployment with NEXT_PUBLIC_BEER_TAB=0. */
+export const SHOW_BEER_TAB = process.env.NEXT_PUBLIC_BEER_TAB !== '0'

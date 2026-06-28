@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
-import { CURRENT_SEASON, SUPABASE_SCHEMA } from '@/lib/config'
+import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB } from '@/lib/config'
 
 interface SeasonRow { id: string; name: string; color: string; points: number; weeklyWins: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
@@ -13,6 +13,7 @@ interface WeekOption { round: number; name: string }
 export default function StandingsPage() {
   const [view, setView] = useState<'season' | 'week'>('season')
   const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([])
+  const [seasonProvisional, setSeasonProvisional] = useState(false)
   const [week, setWeek] = useState<Week | null>(null)
   const [weekOptions, setWeekOptions] = useState<WeekOption[]>([])
   const [weekRound, setWeekRound] = useState<number | null>(null)
@@ -57,17 +58,20 @@ export default function StandingsPage() {
       ? await supabase.from('results').select('race_id').in('race_id', seasonRaceIds)
       : { data: [] as { race_id: string }[] }
     const racesWithResults = [...new Set((resultRaceRows ?? []).map(r => r.race_id))]
+    let anyProvisional = false
     for (const raceId of racesWithResults) {
       const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', raceId).maybeSingle()
       if (!draft || draft.historic) continue
       const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
-      const { data: results } = await supabase.from('results').select('driver_id,finish_position').eq('race_id', raceId)
+      const { data: results } = await supabase.from('results').select('driver_id,finish_position,provisional').eq('race_id', raceId)
+      if ((results ?? []).some(r => r.provisional)) anyProvisional = true
       const byPlayer: Record<string, string[]> = {}
       for (const p of picks ?? []) (byPlayer[p.player_id] ??= []).push(p.driver_id)
       const week = scoreRace(byPlayer, (results ?? []).map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
       cumulative = addToCumulative(cumulative, week)
       awardWeek(week)
     }
+    setSeasonProvisional(anyProvisional)
     setSeasonRows(
       Object.entries(cumulative)
         .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', points, weeklyWins: weeklyWins[id] ?? 0 }))
@@ -186,18 +190,26 @@ export default function StandingsPage() {
 
       {view === 'season' ? (
         <>
+          {seasonProvisional && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: '#33260f', color: 'var(--warn)', fontSize: 12 }}>
+              <span style={{ fontWeight: 700 }}>◔ PRELIMINARY</span>
+              <span>Includes provisional results — standings update automatically when the official results post.</span>
+            </div>
+          )}
           <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span>🏆 = weekly win</span>
-            <span>·</span>
-            <img src="/boston-pizza.png" alt="" width={16} height={16} style={{ flex: '0 0 auto' }} />
-            <span>= Beer Tab</span>
+            {SHOW_BEER_TAB && <>
+              <span>·</span>
+              <img src="/boston-pizza.png" alt="" width={16} height={16} style={{ flex: '0 0 auto' }} />
+              <span>= Beer Tab</span>
+            </>}
           </p>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             {seasonRows.map((r, i) => (
               <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
                 <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
                 {/* 3rd & 4th place cover the beer tab for 1st & 2nd. */}
-                {i >= 2 && (
+                {SHOW_BEER_TAB && i >= 2 && (
                   <img src="/boston-pizza.png" alt="Beer Tab" title="Beer Tab" width={22} height={22} style={{ flex: '0 0 auto' }} />
                 )}
                 <span style={{ fontWeight: 700 }}>{r.name}</span>
