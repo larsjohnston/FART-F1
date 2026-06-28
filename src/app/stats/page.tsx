@@ -142,7 +142,7 @@ export default function StatsPage() {
       {data && view === 'players' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            This season&apos;s avg points/race &amp; weekly firsts/lasts; FART titles are all-time. Points are golf-scored — lower is better.
+            Lifetime — all seasons (2022–present). Points are golf-scored — lower is better.
           </p>
           <div style={{ display: 'grid', gap: 10 }}>
             {data.players.map(p => (

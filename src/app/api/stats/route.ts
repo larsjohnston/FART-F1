@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const [
       { data: players }, { data: picksRaw }, { data: drafts }, { data: races },
       { data: resultsRaw }, { data: qualiRaw }, { data: driverRows }, { data: cons },
-      { data: archiveRP },
+      { data: archiveRP }, { data: archivePicks },
     ] = await Promise.all([
       db.from('players').select('id,name,color').order('sort_order'),
       db.from('picks').select('player_id,driver_id,draft_id'),
@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
       db.from('qualifying').select('race_id,driver_id,position'),
       db.from('drivers').select('id,given_name,family_name,constructor_id'),
       db.from('constructors').select('id,name'),
-      db.from('archive_race_points').select('season,player_id,points'),
+      db.from('archive_race_points').select('season,race_no,player_id,points'),
+      db.from('archive_picks').select('season,player_id,driver'),
     ])
 
     const roundByRace = new Map((races ?? []).map(r => [r.id, r.round]))
@@ -60,10 +61,10 @@ export async function GET(req: NextRequest) {
     // ---------- Weekly wins/lasts + points per race: the POOL rule — drop
     // undrafted drivers, rank the drafted field; lowest weekly total wins,
     // highest is last. pointsById/racesScored give avg points per race. ----------
-    const winsById = new Map<string, number>()   // weekly firsts
-    const lastsById = new Map<string, number>()  // weekly lasts
-    const pointsById = new Map<string, number>() // season pool points
-    let racesScored = 0
+    const winsById = new Map<string, number>()   // weekly firsts (lifetime)
+    const lastsById = new Map<string, number>()  // weekly lasts (lifetime)
+    const pointsById = new Map<string, number>() // pool points (lifetime)
+    const racesById = new Map<string, number>()  // races scored (lifetime, per player)
     for (const r of races ?? []) {
       const finish = new Map<string, number>()
       for (const res of resultsRaw ?? []) if (res.race_id === r.id) finish.set(res.driver_id, res.finish_position)
@@ -84,11 +85,11 @@ export async function GET(req: NextRequest) {
         if (pt != null) totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + pt)
       }
       if (totals.size) {
-        racesScored += 1
-        for (const [pid, t] of totals) pointsById.set(pid, (pointsById.get(pid) ?? 0) + t)
         const min = Math.min(...totals.values())
         const max = Math.max(...totals.values())
         for (const [pid, t] of totals) {
+          racesById.set(pid, (racesById.get(pid) ?? 0) + 1)
+          pointsById.set(pid, (pointsById.get(pid) ?? 0) + t)
           if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
           // Only count a "last" when someone actually trailed (not an all-tie week).
           if (max > min && t === max) lastsById.set(pid, (lastsById.get(pid) ?? 0) + 1)
@@ -96,22 +97,63 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ---------- FART championships: titles from completed past seasons in the
-    // archive (lowest season total wins; ties share). The in-progress current
-    // season isn't a title until it's done, so it's excluded. ----------
-    const archSeasonTotals = new Map<number, Map<string, number>>()
+    // ---------- Lifetime (all years): fold the archive of completed past seasons
+    // (2022–2025) into the live current season. The in-progress current season is
+    // computed live above; archive rows for it (if any) are excluded to avoid
+    // double-counting. ----------
+    const archByRace = new Map<string, Map<string, number>>()      // `${season}:${race_no}` → player → points
+    const archSeasonTotals = new Map<number, Map<string, number>>() // season → player → season total
     for (const r of archiveRP ?? []) {
       if (r.season >= CURRENT_SEASON) continue
-      const m = archSeasonTotals.get(r.season) ?? new Map<string, number>()
-      m.set(r.player_id, (m.get(r.player_id) ?? 0) + r.points)
-      archSeasonTotals.set(r.season, m)
+      const rk = `${r.season}:${r.race_no}`
+      const rm = archByRace.get(rk) ?? new Map<string, number>()
+      rm.set(r.player_id, (rm.get(r.player_id) ?? 0) + r.points)
+      archByRace.set(rk, rm)
+      const sm = archSeasonTotals.get(r.season) ?? new Map<string, number>()
+      sm.set(r.player_id, (sm.get(r.player_id) ?? 0) + r.points)
+      archSeasonTotals.set(r.season, sm)
     }
+
+    // Archive weekly firsts/lasts + points + race counts (per player).
+    for (const rm of archByRace.values()) {
+      if (!rm.size) continue
+      const min = Math.min(...rm.values())
+      const max = Math.max(...rm.values())
+      for (const [pid, t] of rm) {
+        racesById.set(pid, (racesById.get(pid) ?? 0) + 1)
+        pointsById.set(pid, (pointsById.get(pid) ?? 0) + t)
+        if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
+        if (max > min && t === max) lastsById.set(pid, (lastsById.get(pid) ?? 0) + 1)
+      }
+    }
+
+    // FART championships: lowest season total wins each completed season; ties share.
     const championshipsById = new Map<string, number>()
     for (const totals of archSeasonTotals.values()) {
       if (!totals.size) continue
       const min = Math.min(...totals.values())
       for (const [pid, t] of totals) if (t === min) championshipsById.set(pid, (championshipsById.get(pid) ?? 0) + 1)
     }
+
+    // Lifetime most-picked driver: combine archive picks (free-text family names,
+    // mixed case) with this season's live picks, keyed by lower-cased family name.
+    const titleCase = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s)
+    const familyById = new Map((driverRows ?? []).map(d => [d.id, d.family_name ?? '']))
+    const pickFreqByPlayer = new Map<string, Map<string, { count: number; display: string }>>()
+    const bumpPick = (playerId: string, family: string) => {
+      const key = family.trim().toLowerCase()
+      if (!key) return
+      const fm = pickFreqByPlayer.get(playerId) ?? new Map<string, { count: number; display: string }>()
+      const cur = fm.get(key) ?? { count: 0, display: titleCase(family.trim()) }
+      cur.count += 1
+      fm.set(key, cur)
+      pickFreqByPlayer.set(playerId, fm)
+    }
+    for (const ap of archivePicks ?? []) {
+      if (ap.season >= CURRENT_SEASON) continue
+      bumpPick(ap.player_id, ap.driver ?? '')
+    }
+    for (const p of picks) bumpPick(p.player_id, familyById.get(p.driver_id) ?? '')
 
     // ---------- Driver stats (from our own DB) ----------
     type Fin = { round: number; finish: number; grid: number | null; status: string | null; quali: number | null }
@@ -202,12 +244,17 @@ export async function GET(req: NextRequest) {
       }
       const topPicks = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
         .map(([id, count]) => ({ name: driverName.get(id) ?? id, count }))
+      const races = racesById.get(pl.id) ?? 0
+      const lifeFreq = pickFreqByPlayer.get(pl.id)
+      const mostPicked = lifeFreq && lifeFreq.size
+        ? [...lifeFreq.values()].sort((a, b) => b.count - a.count)[0].display
+        : null
       return {
         id: pl.id, name: pl.name, color: pl.color, picks: mine.length,
         avgFinish: finN ? round1(finSum / finN) : null,
         topPicks, bogey: topPicks[0]?.name ?? null, best, worst, weeklyWins: 0,
-        avgPoints: racesScored ? round1((pointsById.get(pl.id) ?? 0) / racesScored) : null,
-        mostPicked: topPicks[0]?.name ?? null,
+        avgPoints: races ? round1((pointsById.get(pl.id) ?? 0) / races) : null,
+        mostPicked,
         firsts: winsById.get(pl.id) ?? 0,
         lasts: lastsById.get(pl.id) ?? 0,
         championships: championshipsById.get(pl.id) ?? 0,
