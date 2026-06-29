@@ -3,10 +3,11 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB } from '@/lib/config'
+import PlayerAvatar from '@/components/PlayerAvatar'
 
-interface SeasonRow { id: string; name: string; color: string; points: number; weeklyWins: number }
+interface SeasonRow { id: string; name: string; color: string; photoUrl: string | null; points: number; weeklyWins: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
-interface WeekRow { name: string; color: string; points: number; drivers: WeekDriver[] }
+interface WeekRow { name: string; color: string; photoUrl: string | null; points: number; drivers: WeekDriver[] }
 interface Week { raceName: string; hasResults: boolean; provisional: boolean; rows: WeekRow[] }
 interface WeekOption { round: number; name: string }
 
@@ -22,10 +23,11 @@ export default function StandingsPage() {
 
   // ---------- Championship + the list of selectable races ----------
   const loadSeasonAndOptions = useCallback(async () => {
-    const { data: players } = await supabase.from('players').select('id,name,color')
-    const pl = (players ?? []) as { id: string; name: string; color: string }[]
+    const { data: players } = await supabase.from('players').select('id,name,color,photo_url')
+    const pl = (players ?? []) as { id: string; name: string; color: string; photo_url: string | null }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
+    const photoById: Record<string, string | null> = Object.fromEntries(pl.map(p => [p.id, p.photo_url]))
 
     const { data: prior } = await supabase
       .from('prior_race_points').select('player_id,round,points').eq('season', CURRENT_SEASON)
@@ -74,7 +76,7 @@ export default function StandingsPage() {
     setSeasonProvisional(anyProvisional)
     setSeasonRows(
       Object.entries(cumulative)
-        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', points, weeklyWins: weeklyWins[id] ?? 0 }))
+        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', photoUrl: photoById[id] ?? null, points, weeklyWins: weeklyWins[id] ?? 0 }))
         .sort((a, b) => a.points - b.points),
     )
 
@@ -97,10 +99,11 @@ export default function StandingsPage() {
     const { data: race } = await supabase
       .from('races').select('id,name').eq('season', CURRENT_SEASON).eq('round', round).maybeSingle()
     if (!race) { setWeek(null); return }
-    const { data: players } = await supabase.from('players').select('id,name,color')
-    const pl = (players ?? []) as { id: string; name: string; color: string }[]
+    const { data: players } = await supabase.from('players').select('id,name,color,photo_url')
+    const pl = (players ?? []) as { id: string; name: string; color: string; photo_url: string | null }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
+    const photoById: Record<string, string | null> = Object.fromEntries(pl.map(p => [p.id, p.photo_url]))
 
     const { data: draft } = await supabase.from('drafts').select('id').eq('race_id', race.id).maybeSingle()
     let picks: { player_id: string; driver_id: string }[] = []
@@ -137,7 +140,7 @@ export default function StandingsPage() {
       }
       const rows = Object.entries(byPlayer)
         .map(([pid, drivers]) => ({
-          name: nameById[pid] ?? pid, color: colorById[pid] ?? '#888',
+          name: nameById[pid] ?? pid, color: colorById[pid] ?? '#888', photoUrl: photoById[pid] ?? null,
           points: drivers.reduce((s, d) => s + d.points, 0),
           drivers: drivers.sort((a, b) => a.pos - b.pos),
         }))
@@ -151,7 +154,7 @@ export default function StandingsPage() {
       .from('prior_race_points').select('player_id,points').eq('season', CURRENT_SEASON).eq('round', round)
     if (pp && pp.length) {
       const rows = pl
-        .map(p => ({ name: p.name, color: p.color, points: pp.find(x => x.player_id === p.id)?.points ?? 0, drivers: [] as WeekDriver[] }))
+        .map(p => ({ name: p.name, color: p.color, photoUrl: p.photo_url, points: pp.find(x => x.player_id === p.id)?.points ?? 0, drivers: [] as WeekDriver[] }))
         .sort((a, b) => a.points - b.points)
       setWeek({ raceName: race.name, hasResults: true, provisional: false, rows })
       return
@@ -212,6 +215,7 @@ export default function StandingsPage() {
                 {SHOW_BEER_TAB && i >= 2 && (
                   <img src="/boston-pizza.png" alt="Beer Tab" title="Beer Tab" width={22} height={22} style={{ flex: '0 0 auto' }} />
                 )}
+                <PlayerAvatar name={r.name} color={r.color} photoUrl={r.photoUrl} size={26} />
                 <span style={{ fontWeight: 700 }}>{r.name}</span>
                 {/* A trophy for each weekly win. */}
                 {r.weeklyWins > 0 && (
@@ -267,8 +271,9 @@ export default function StandingsPage() {
               {week.rows.length > 0 && (
                 <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
                   {week.rows.map((r, i) => (
-                    <div key={`lead-${r.name}`} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
+                    <div key={`lead-${r.name}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel-2)', border: '1px solid var(--line)', borderLeft: `4px solid ${r.color}`, borderRadius: 10 }}>
                       <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
+                      <PlayerAvatar name={r.name} color={r.color} photoUrl={r.photoUrl} size={26} />
                       <span style={{ flex: 1, fontWeight: 700 }}>
                         {r.name}{r.points === week.rows[0].points ? ' 🏆' : ''}
                       </span>
@@ -285,8 +290,9 @@ export default function StandingsPage() {
                 <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
                   {week.rows.map((r, i) => (
                     <div key={r.name} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel)', borderLeft: `4px solid ${r.color}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--panel)', borderLeft: `4px solid ${r.color}` }}>
                         <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
+                        <PlayerAvatar name={r.name} color={r.color} photoUrl={r.photoUrl} size={26} />
                         <span style={{ flex: 1, fontWeight: 700 }}>{r.name}</span>
                         <span style={{ fontWeight: 800 }}>{r.points}</span>
                       </div>

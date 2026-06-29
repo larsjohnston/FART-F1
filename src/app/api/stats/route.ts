@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       { data: resultsRaw }, { data: qualiRaw }, { data: driverRows }, { data: cons },
       { data: archiveRP }, { data: archivePicks }, { data: priorRP },
     ] = await Promise.all([
-      db.from('players').select('id,name,color').order('sort_order'),
+      db.from('players').select('id,name,color,photo_url').order('sort_order'),
       db.from('picks').select('player_id,driver_id,draft_id'),
       db.from('drafts').select('id,race_id'),
       db.from('races').select('id,round,name').eq('season', season),
@@ -275,7 +275,7 @@ export async function GET(req: NextRequest) {
         ? [...lifeFreq.values()].sort((a, b) => b.count - a.count)[0].display
         : null
       return {
-        id: pl.id, name: pl.name, color: pl.color, picks: mine.length,
+        id: pl.id, name: pl.name, color: pl.color, photoUrl: pl.photo_url ?? null, picks: mine.length,
         avgFinish: finN ? round1(finSum / finN) : null,
         topPicks, bogey: topPicks[0]?.name ?? null, best, worst, weeklyWins: 0,
         avgPoints: races ? round1((pointsById.get(pl.id) ?? 0) / races) : null,

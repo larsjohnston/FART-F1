@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { CURRENT_SEASON } from '@/lib/config'
 import { TEAM_COLORS } from '@/lib/f1/teamColors'
+import PlayerAvatar from '@/components/PlayerAvatar'
 
 interface DriverStat {
   id: string; name: string; team: string; constructorId: string; races: number
@@ -14,6 +15,7 @@ interface PlayerStat {
   topPicks: TopPick[]; bogey: string | null
   best: { driver: string; finish: number } | null; worst: { driver: string; finish: number } | null; weeklyWins: number
   avgPoints: number | null; mostPicked: string | null; firsts: number; lasts: number; championships: number
+  photoUrl?: string | null
 }
 interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; error?: string }
 
@@ -37,7 +39,12 @@ type PCol = {
   cell: (p: PlayerStat) => ReactNode
 }
 const PCOLS: PCol[] = [
-  { key: 'name', label: ['Player', ''], num: false, align: 'left', defDir: 'asc', get: p => p.name, cell: p => <span style={{ fontWeight: 700 }}>{p.name}</span> },
+  { key: 'name', label: ['Player', ''], num: false, align: 'left', defDir: 'asc', get: p => p.name, cell: p => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <PlayerAvatar name={p.name} color={p.color} photoUrl={p.photoUrl} size={26} />
+      <span style={{ fontWeight: 700 }}>{p.name}</span>
+    </span>
+  ) },
   { key: 'avgPoints', label: ['Avg', 'Pts'], num: true, align: 'right', defDir: 'asc', get: p => p.avgPoints, cell: p => (p.avgPoints != null ? String(p.avgPoints) : '–') },
   { key: 'mostPicked', label: ['Most', 'Picked'], num: false, align: 'left', defDir: 'asc', get: p => p.mostPicked, cell: p => p.mostPicked ?? '–' },
   { key: 'firsts', label: ['Weekly', 'Wins'], num: true, align: 'right', defDir: 'desc', get: p => p.firsts, cell: p => String(p.firsts) },
