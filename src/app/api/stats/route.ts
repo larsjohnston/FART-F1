@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const [
       { data: players }, { data: picksRaw }, { data: drafts }, { data: races },
       { data: resultsRaw }, { data: qualiRaw }, { data: driverRows }, { data: cons },
-      { data: archiveRP }, { data: archivePicks },
+      { data: archiveRP }, { data: archivePicks }, { data: priorRP },
     ] = await Promise.all([
       db.from('players').select('id,name,color').order('sort_order'),
       db.from('picks').select('player_id,driver_id,draft_id'),
@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       db.from('constructors').select('id,name'),
       db.from('archive_race_points').select('season,race_no,player_id,points'),
       db.from('archive_picks').select('season,player_id,driver'),
+      db.from('prior_race_points').select('round,player_id,points').eq('season', CURRENT_SEASON),
     ])
 
     const roundByRace = new Map((races ?? []).map(r => [r.id, r.round]))
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest) {
     const lastsById = new Map<string, number>()  // weekly lasts (lifetime)
     const pointsById = new Map<string, number>() // pool points (lifetime)
     const racesById = new Map<string, number>()  // races scored (lifetime, per player)
+    const liveRounds = new Set<number>()         // current-season rounds counted from live drafts
     for (const r of races ?? []) {
       const finish = new Map<string, number>()
       for (const res of resultsRaw ?? []) if (res.race_id === r.id) finish.set(res.driver_id, res.finish_position)
@@ -85,6 +87,7 @@ export async function GET(req: NextRequest) {
         if (pt != null) totals.set(p.player_id, (totals.get(p.player_id) ?? 0) + pt)
       }
       if (totals.size) {
+        liveRounds.add(r.round)
         const min = Math.min(...totals.values())
         const max = Math.max(...totals.values())
         for (const [pid, t] of totals) {
@@ -94,6 +97,28 @@ export async function GET(req: NextRequest) {
           // Only count a "last" when someone actually trailed (not an all-tie week).
           if (max > min && t === max) lastsById.set(pid, (lastsById.get(pid) ?? 0) + 1)
         }
+      }
+    }
+
+    // Current-season rounds entered as prior points (played before the app, e.g.
+    // a pool's back-filled rounds) feed the same weekly firsts/lasts/avg. Skip any
+    // round already scored from a live draft above so it's never double-counted.
+    const priorByRound = new Map<number, Map<string, number>>()
+    for (const r of priorRP ?? []) {
+      if (liveRounds.has(r.round)) continue
+      const m = priorByRound.get(r.round) ?? new Map<string, number>()
+      m.set(r.player_id, (m.get(r.player_id) ?? 0) + r.points)
+      priorByRound.set(r.round, m)
+    }
+    for (const m of priorByRound.values()) {
+      if (!m.size) continue
+      const min = Math.min(...m.values())
+      const max = Math.max(...m.values())
+      for (const [pid, t] of m) {
+        racesById.set(pid, (racesById.get(pid) ?? 0) + 1)
+        pointsById.set(pid, (pointsById.get(pid) ?? 0) + t)
+        if (t === min) winsById.set(pid, (winsById.get(pid) ?? 0) + 1)
+        if (max > min && t === max) lastsById.set(pid, (lastsById.get(pid) ?? 0) + 1)
       }
     }
 
