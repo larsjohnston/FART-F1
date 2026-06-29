@@ -63,9 +63,16 @@ export default function StatsPage() {
     (async () => {
       const { data: drafts } = await supabase.from('drafts').select('race_id')
       const { data: races } = await supabase
-        .from('races').select('id,round').eq('season', CURRENT_SEASON).order('round', { ascending: false })
+        .from('races').select('id,round,date').eq('season', CURRENT_SEASON).order('round', { ascending: false })
       const draftRaces = new Set((drafts ?? []).map(d => d.race_id))
-      const cur = (races ?? []).find(r => draftRaces.has(r.id))
+      const today = new Date().toISOString().slice(0, 10)
+      const rs = races ?? []
+      // Current race for the Track Avg circuit: the latest race being drafted,
+      // else the most recent race that's happened (pools with no in-app drafts,
+      // e.g. backfilled history), else the earliest round.
+      const cur = rs.find(r => draftRaces.has(r.id))
+        ?? rs.find(r => r.date && r.date <= today)
+        ?? rs[rs.length - 1]
       const round = cur?.round ?? 0
       try {
         const res = await fetch(`/api/stats?season=${CURRENT_SEASON}&round=${round}`).then(r => r.json())
