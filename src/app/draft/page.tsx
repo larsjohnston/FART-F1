@@ -7,6 +7,7 @@ import { onClock } from '@/lib/draft/engine'
 import type { DraftState } from '@/lib/draft/types'
 import DriverCard, { type DriverVM } from '@/components/DriverCard'
 import OnTheClock from '@/components/OnTheClock'
+import PlayerAvatar from '@/components/PlayerAvatar'
 import NamePicker from '@/components/NamePicker'
 import EnableNotifications from '@/components/EnableNotifications'
 import { CURRENT_SEASON } from '@/lib/config'
@@ -20,7 +21,7 @@ export default function DraftPage() {
   const [draft, setDraft] = useState<DraftRow | null>(null)
   const [state, setState] = useState<DraftState | null>(null)
   const [drivers, setDrivers] = useState<DriverVM[]>([])
-  const [players, setPlayers] = useState<Record<string, { name: string; color: string }>>({})
+  const [players, setPlayers] = useState<Record<string, { name: string; color: string; photoUrl: string | null }>>({})
   const [raceName, setRaceName] = useState('')
   const [view, setView] = useState<'players' | 'sequence'>('players')
   const [champ, setChamp] = useState<{ drivers: ChampDriver[]; constructors: ChampCons[] } | null>(null)
@@ -56,8 +57,8 @@ export default function DraftPage() {
     loadComms(loaded.draft.id)
     setState(loaded.state)
 
-    const { data: pl } = await supabase.from('players').select('id,name,color')
-    const playerMap = Object.fromEntries((pl ?? []).map(p => [p.id, { name: p.name, color: p.color }])) as Record<string, { name: string; color: string }>
+    const { data: pl } = await supabase.from('players').select('id,name,color,photo_url')
+    const playerMap = Object.fromEntries((pl ?? []).map(p => [p.id, { name: p.name, color: p.color, photoUrl: p.photo_url ?? null }])) as Record<string, { name: string; color: string; photoUrl: string | null }>
     setPlayers(playerMap)
 
     // Load drivers + constructors as two queries (anon-friendly).
@@ -292,7 +293,8 @@ export default function DraftPage() {
                 const pl = players[pid]
                 return (
                   <div key={pid} style={{ marginBottom: 12, border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: 'var(--panel)', borderLeft: `4px solid ${pl?.color ?? '#888'}`, fontWeight: 700 }}>
+                    <div style={{ padding: '8px 12px', background: 'var(--panel)', borderLeft: `4px solid ${pl?.color ?? '#888'}`, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <PlayerAvatar name={pl?.name ?? 'Player'} color={pl?.color ?? '#888'} photoUrl={pl?.photoUrl} size={24} />
                       {pl?.name ?? 'Player'}
                     </div>
                     {roster.map(p => {
