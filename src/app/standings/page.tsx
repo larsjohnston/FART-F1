@@ -278,25 +278,30 @@ export default function StandingsPage() {
                 </div>
               )}
 
-              <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
-                {week.rows.map((r, i) => (
-                  <div key={r.name} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel)', borderLeft: `4px solid ${r.color}` }}>
-                      <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
-                      <span style={{ flex: 1, fontWeight: 700 }}>{r.name}</span>
-                      <span style={{ fontWeight: 800 }}>{r.points}</span>
-                    </div>
-                    {r.drivers.map((d, j) => (
-                      <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid var(--line)', fontSize: 13 }}>
-                        <span style={{ width: 4, height: 16, borderRadius: 2, background: d.teamColor }} />
-                        <span style={{ flex: 1 }}>{d.name}</span>
-                        <span style={{ color: 'var(--muted)' }}>P{d.pos} · {d.points} pt{d.points === 1 ? '' : 's'}</span>
+              {/* Per-player driver breakdown — only when there are drafted drivers
+                  to show. For points-only weeks (entered, no draft) this would just
+                  duplicate the leaderboard above, so it's hidden. */}
+              {week.rows.some(r => r.drivers.length > 0) && (
+                <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+                  {week.rows.map((r, i) => (
+                    <div key={r.name} style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'var(--panel)', borderLeft: `4px solid ${r.color}` }}>
+                        <span style={{ width: 24, color: i === 0 ? 'var(--warn)' : 'var(--muted)' }}>{i + 1}</span>
+                        <span style={{ flex: 1, fontWeight: 700 }}>{r.name}</span>
+                        <span style={{ fontWeight: 800 }}>{r.points}</span>
                       </div>
-                    ))}
-                  </div>
-                ))}
-                {week.rows.length === 0 && <p style={{ color: 'var(--muted)' }}>No picks or points entered for this race yet.</p>}
-              </div>
+                      {r.drivers.map((d, j) => (
+                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid var(--line)', fontSize: 13 }}>
+                          <span style={{ width: 4, height: 16, borderRadius: 2, background: d.teamColor }} />
+                          <span style={{ flex: 1 }}>{d.name}</span>
+                          <span style={{ color: 'var(--muted)' }}>P{d.pos} · {d.points} pt{d.points === 1 ? '' : 's'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {week.rows.length === 0 && <p style={{ color: 'var(--muted)', marginTop: 16 }}>No picks or points entered for this race yet.</p>}
             </>
           )}
         </>
