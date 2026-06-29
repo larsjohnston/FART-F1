@@ -102,11 +102,15 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 - **BottomNav pinning (iOS) — app-shell layout, NOT `position: fixed`.** A fixed bottom bar gets
   stranded mid-page during iOS Safari momentum scroll, and the `transform: translateZ(0)` /
   `will-change` compositor-layer hack only *partly* mitigated it (still detached on fast flicks).
-  **The real fix:** the whole app is a fixed-height flex column and only an inner container scrolls,
-  so the nav is a static footer that physically cannot move. In `app/layout.tsx` the `<body>` is
-  `height: 100dvh; display: flex; flex-direction: column; overflow: hidden`; `{children}` live in a
-  single `flex: 1; min-height: 0; overflow-y: auto` scroll container; `BottomNav` is the last flex
-  child (`flex-shrink: 0`, `env(safe-area-inset-bottom)` padding). **Rules so this never regresses:**
+  **The real fix:** the whole app is a flex column pinned to the visual viewport and only an inner
+  container scrolls, so the nav is a static footer that physically cannot move. In `app/layout.tsx`
+  the `<body>` is `position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden;
+  padding-top: env(safe-area-inset-top)`; `{children}` live in a single `flex: 1; min-height: 0;
+  overflow-y: auto` scroll container; `BottomNav` is the last flex child (`flex-shrink: 0`,
+  `env(safe-area-inset-bottom)` padding). **Do NOT use `height: 100dvh` for the shell** — `dvh`
+  renders short of the physical screen in iOS standalone (PWA), leaving the column floating with a
+  dead strip below the nav and content tucked under the status bar; `100vh` over-fills regular
+  Safari. `position: fixed; inset: 0` anchors to the visual viewport in both. **Rules so this never regresses:**
   (1) never give `BottomNav` `position: fixed`/`sticky` again — keep it a static flex child;
   (2) the document body must not scroll — put any new full-page scrolling inside that one container;
   (3) don't put `transform`/`filter`/`will-change` on `body` or the scroll container (it would make
