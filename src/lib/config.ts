@@ -39,3 +39,11 @@ export const LEAGUES: LeagueLink[] = [
  *  tab for 1st/2nd). Specific to FART E; other pools have their own reward
  *  systems, so disable it per-deployment with NEXT_PUBLIC_BEER_TAB=0. */
 export const SHOW_BEER_TAB = process.env.NEXT_PUBLIC_BEER_TAB !== '0'
+
+/** Weekly cash game (FART A): each race the weekly finishing order pays out
+ *  1st +$30, 2nd +$10, 3rd −$20, 4th −$20 — a net-zero pot. Shown per week on the
+ *  Weekly view plus a running season tab on the Championship board. Gated by
+ *  NEXT_PUBLIC_PAYOUTS so only pools that play for money see it. Ties split the
+ *  combined payout for the positions they span. */
+export const SHOW_PAYOUTS = process.env.NEXT_PUBLIC_PAYOUTS === '1'
+export const WEEKLY_PAYOUTS = [30, 10, -20, -20]

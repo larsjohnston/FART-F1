@@ -2,12 +2,30 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
-import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB } from '@/lib/config'
+import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB, SHOW_PAYOUTS, WEEKLY_PAYOUTS } from '@/lib/config'
 import PlayerAvatar from '@/components/PlayerAvatar'
 
-interface SeasonRow { id: string; name: string; color: string; photoUrl: string | null; points: number; weeklyWins: number }
+interface SeasonRow { id: string; name: string; color: string; photoUrl: string | null; points: number; weeklyWins: number; money: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
-interface WeekRow { name: string; color: string; photoUrl: string | null; points: number; drivers: WeekDriver[] }
+interface WeekRow { name: string; color: string; photoUrl: string | null; points: number; drivers: WeekDriver[]; payout: number }
+
+// Weekly cash payouts by finishing order, ties splitting the positions they span.
+// Input is the per-player weekly totals (lower is better). Returns the same order.
+function payoutsForSorted(sortedPts: number[]): number[] {
+  const res = new Array(sortedPts.length).fill(0)
+  let i = 0
+  while (i < sortedPts.length) {
+    let j = i
+    while (j + 1 < sortedPts.length && sortedPts[j + 1] === sortedPts[i]) j++
+    const slice = WEEKLY_PAYOUTS.slice(i, j + 1)
+    const avg = slice.length ? slice.reduce((s, x) => s + x, 0) / slice.length : 0
+    for (let k = i; k <= j; k++) res[k] = avg
+    i = j + 1
+  }
+  return res
+}
+const fmtMoney = (n: number) => { const r = Math.round(n); return r > 0 ? `+$${r}` : r < 0 ? `−$${Math.abs(r)}` : '$0' }
+const moneyColor = (n: number) => (n > 0 ? 'var(--live)' : n < 0 ? 'var(--warn)' : 'var(--muted)')
 interface Week { raceName: string; hasResults: boolean; provisional: boolean; rows: WeekRow[] }
 interface WeekOption { round: number; name: string }
 
@@ -38,12 +56,17 @@ export default function StandingsPage() {
     // Weekly wins: the lowest weekly total takes the week (golf scoring); ties
     // share it. Counted across entered prior rounds and every scored race.
     const weeklyWins: Record<string, number> = {}
-    for (const p of pl) weeklyWins[p.id] = 0
+    const moneyById: Record<string, number> = {}
+    for (const p of pl) { weeklyWins[p.id] = 0; moneyById[p.id] = 0 }
     const awardWeek = (weekPts: Record<string, number>) => {
       const vals = Object.values(weekPts)
       if (!vals.length) return
       const min = Math.min(...vals)
       for (const [id, pts] of Object.entries(weekPts)) if (pts === min) weeklyWins[id] = (weeklyWins[id] ?? 0) + 1
+      // Weekly cash payout (ranked by weekly total; ties split).
+      const sorted = Object.entries(weekPts).sort((a, b) => a[1] - b[1])
+      const pays = payoutsForSorted(sorted.map(e => e[1]))
+      sorted.forEach(([id], idx) => { moneyById[id] = (moneyById[id] ?? 0) + pays[idx] })
     }
     const priorByRound: Record<number, Record<string, number>> = {}
     for (const r of prior ?? []) (priorByRound[r.round] ??= {})[r.player_id] = (priorByRound[r.round][r.player_id] ?? 0) + r.points
@@ -76,7 +99,7 @@ export default function StandingsPage() {
     setSeasonProvisional(anyProvisional)
     setSeasonRows(
       Object.entries(cumulative)
-        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', photoUrl: photoById[id] ?? null, points, weeklyWins: weeklyWins[id] ?? 0 }))
+        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', photoUrl: photoById[id] ?? null, points, weeklyWins: weeklyWins[id] ?? 0, money: moneyById[id] ?? 0 }))
         .sort((a, b) => a.points - b.points),
     )
 
@@ -138,13 +161,15 @@ export default function StandingsPage() {
           points: wkPts.get(p.driver_id) ?? 0,
         })
       }
-      const rows = Object.entries(byPlayer)
+      const ranked = Object.entries(byPlayer)
         .map(([pid, drivers]) => ({
           name: nameById[pid] ?? pid, color: colorById[pid] ?? '#888', photoUrl: photoById[pid] ?? null,
           points: drivers.reduce((s, d) => s + d.points, 0),
           drivers: drivers.sort((a, b) => a.pos - b.pos),
         }))
         .sort((a, b) => a.points - b.points)
+      const pays = payoutsForSorted(ranked.map(r => r.points))
+      const rows = ranked.map((r, i) => ({ ...r, payout: pays[i] }))
       setWeek({ raceName: race.name, hasResults, provisional, rows })
       return
     }
@@ -153,9 +178,11 @@ export default function StandingsPage() {
     const { data: pp } = await supabase
       .from('prior_race_points').select('player_id,points').eq('season', CURRENT_SEASON).eq('round', round)
     if (pp && pp.length) {
-      const rows = pl
+      const ranked = pl
         .map(p => ({ name: p.name, color: p.color, photoUrl: p.photo_url, points: pp.find(x => x.player_id === p.id)?.points ?? 0, drivers: [] as WeekDriver[] }))
         .sort((a, b) => a.points - b.points)
+      const pays = payoutsForSorted(ranked.map(r => r.points))
+      const rows = ranked.map((r, i) => ({ ...r, payout: pays[i] }))
       setWeek({ raceName: race.name, hasResults: true, provisional: false, rows })
       return
     }
@@ -206,6 +233,7 @@ export default function StandingsPage() {
               <img src="/boston-pizza.png" alt="" width={16} height={16} style={{ flex: '0 0 auto' }} />
               <span>= Beer Tab</span>
             </>}
+            {SHOW_PAYOUTS && <span>· 💰 = running tab (season $)</span>}
           </p>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             {seasonRows.map((r, i) => (
@@ -224,7 +252,10 @@ export default function StandingsPage() {
                   </span>
                 )}
                 {r.weeklyWins === 0 && <span style={{ flex: 1 }} />}
-                <span style={{ fontWeight: 700 }}>{r.points}</span>
+                {SHOW_PAYOUTS && (
+                  <span style={{ fontWeight: 700, fontSize: 13, color: moneyColor(r.money), minWidth: 52, textAlign: 'right' }}>{fmtMoney(r.money)}</span>
+                )}
+                <span style={{ fontWeight: 700, minWidth: 36, textAlign: 'right' }}>{r.points}</span>
               </div>
             ))}
             {seasonRows.length === 0 && <p style={{ color: 'var(--muted)' }}>No completed races scored yet.</p>}
@@ -265,6 +296,11 @@ export default function StandingsPage() {
                     ? 'Provisional finishing order — official result (with any penalties) replaces it once posted.'
                     : 'Points for this race. Lowest weekly total wins the week.'}
               </p>
+              {SHOW_PAYOUTS && (
+                <p style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+                  💰 Cash game: 1st +$30 · 2nd +$10 · 3rd &amp; 4th −$20
+                </p>
+              )}
 
               {/* Weekly leaderboard: the four players + their weekly points, 🏆 on
                   the lowest score (golf scoring). Ties share the trophy. */}
@@ -277,7 +313,10 @@ export default function StandingsPage() {
                       <span style={{ flex: 1, fontWeight: 700 }}>
                         {r.name}{r.points === week.rows[0].points ? ' 🏆' : ''}
                       </span>
-                      <span style={{ fontWeight: 800 }}>{r.points}</span>
+                      {SHOW_PAYOUTS && (
+                        <span style={{ fontWeight: 700, fontSize: 13, color: moneyColor(r.payout), minWidth: 52, textAlign: 'right' }}>{fmtMoney(r.payout)}</span>
+                      )}
+                      <span style={{ fontWeight: 800, minWidth: 36, textAlign: 'right' }}>{r.points}</span>
                     </div>
                   ))}
                 </div>
