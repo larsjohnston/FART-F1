@@ -47,6 +47,14 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   publication, publicly readable like picks/results).
 - **Realtime publication** includes `picks`, `drafts`, `results`, `commentary` (add new tables
   with `alter publication supabase_realtime add table <t>` — see migrations 0003 / 0011).
+- **RLS (migration 0014):** every data table has Row-Level Security **on** to clear the Supabase
+  "RLS Disabled in Public" advisor. ⚠️ The policy (`"Public full access"`) is **fully permissive**
+  (anon may read AND write) because the app has **no auth** and the browser anon client writes
+  picks/drafts/results/admin edits directly — so this silences the advisor but is **not** real
+  protection; a stranger with the URL can still edit/delete data. Real lockdown = move writes to
+  server-side API routes (service role bypasses RLS) + serve only SELECT to anon (not done).
+  `push_subscriptions` is the exception: RLS on with **no** policy (server-only). New tables must
+  `enable row level security` (+ a policy, or none for server-only) or the advisor re-fires.
 - **Archive tables (static spreadsheet import, 2022–2026, read-only history):**
   `archive_race_points` (season, race_no, player_id, points) and
   `archive_picks` (season, player_id, `driver` as TEXT, finish, race_name). There are **no
