@@ -8,8 +8,7 @@
 -- It is safe to re-run.
 --
 -- This file does NOT create the tables — it sets up the schema, then you apply the
--- normal migrations (0001..latest, incl. 0014 which enables RLS on every table)
--- INTO this schema by running each with
+-- normal migrations (0001..0011) INTO this schema by running each with
 -- `set search_path = pool2, extensions;` prepended (the migrations create tables
 -- with unqualified names, so the search_path decides where they land). The realtime
 -- publication lines inside the migrations are hard-coded to `public`, so this file
@@ -21,7 +20,7 @@
 create schema if not exists pool2;
 grant usage on schema pool2 to anon, authenticated, service_role;
 
--- 2. >>> APPLY MIGRATIONS 0001..latest INTO `pool2` HERE <<<
+-- 2. >>> APPLY MIGRATIONS 0001..0011 INTO `pool2` HERE <<<
 --    (each prefixed with `set search_path = pool2, extensions;`)
 --    Do that step, THEN run the rest of this file.
 
