@@ -6,7 +6,7 @@ import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB, SHOW_PAYOUTS, WEEKLY_PA
 import PlayerAvatar from '@/components/PlayerAvatar'
 
 interface SeasonRow { id: string; name: string; color: string; photoUrl: string | null; points: number; weeklyWins: number; money: number }
-interface WeekDriver { name: string; teamColor: string; pos: number; points: number }
+interface WeekDriver { name: string; teamColor: string; pos: number; points: number; overall: number; pickedBy: string | null }
 interface WeekRow { name: string; color: string; photoUrl: string | null; points: number; drivers: WeekDriver[]; payout: number }
 
 // Weekly cash payouts by finishing order, ties splitting the positions they span.
@@ -129,9 +129,9 @@ export default function StandingsPage() {
     const photoById: Record<string, string | null> = Object.fromEntries(pl.map(p => [p.id, p.photo_url]))
 
     const { data: draft } = await supabase.from('drafts').select('id').eq('race_id', race.id).maybeSingle()
-    let picks: { player_id: string; driver_id: string }[] = []
+    let picks: { player_id: string; driver_id: string; overall: number; actor_id: string }[] = []
     if (draft) {
-      const res = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
+      const res = await supabase.from('picks').select('player_id,driver_id,overall,actor_id').eq('draft_id', draft.id)
       picks = res.data ?? []
     }
 
@@ -159,13 +159,15 @@ export default function StandingsPage() {
           teamColor: info?.teamColor ?? '#888',
           pos: posByDriver.get(p.driver_id) ?? 0,
           points: wkPts.get(p.driver_id) ?? 0,
+          overall: p.overall,
+          pickedBy: p.actor_id !== p.player_id ? (nameById[p.actor_id] ?? null) : null,
         })
       }
       const ranked = Object.entries(byPlayer)
         .map(([pid, drivers]) => ({
           name: nameById[pid] ?? pid, color: colorById[pid] ?? '#888', photoUrl: photoById[pid] ?? null,
           points: drivers.reduce((s, d) => s + d.points, 0),
-          drivers: drivers.sort((a, b) => a.pos - b.pos),
+          drivers: drivers.sort((a, b) => a.overall - b.overall),
         }))
         .sort((a, b) => a.points - b.points)
       const pays = payoutsForSorted(ranked.map(r => r.points))
@@ -338,7 +340,12 @@ export default function StandingsPage() {
                       {r.drivers.map((d, j) => (
                         <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid var(--line)', fontSize: 13 }}>
                           <span style={{ width: 4, height: 16, borderRadius: 2, background: d.teamColor }} />
-                          <span style={{ flex: 1 }}>{d.name}</span>
+                          {/* Overall draft pick number for this driver. */}
+                          <span style={{ color: 'var(--muted)', fontSize: 11, minWidth: 26 }}>#{d.overall}</span>
+                          <span style={{ flex: 1 }}>
+                            {d.name}
+                            {d.pickedBy && <span style={{ color: 'var(--muted)', fontSize: 11 }}> · picked by {d.pickedBy}</span>}
+                          </span>
                           <span style={{ color: 'var(--muted)' }}>P{d.pos} · {d.points} pt{d.points === 1 ? '' : 's'}</span>
                         </div>
                       ))}
