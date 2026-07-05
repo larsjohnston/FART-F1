@@ -247,22 +247,6 @@ export async function GET(req: NextRequest) {
     }
     if (hotStreak && hotStreak.s >= 2) mk('🔥', 'Hot streak', hotStreak.id, `${hotStreak.s} weekly wins in a row`)
 
-    // Head-to-head: who beats their rivals most often, week to week.
-    let h2h: { id: string; rate: number } | null = null
-    for (const pl of players ?? []) {
-      let wins = 0, games = 0
-      for (const w of weeks) {
-        const mine = w.totals[pl.id]
-        if (typeof mine !== 'number') continue
-        for (const [oid, opts] of Object.entries(w.totals)) {
-          if (oid === pl.id) continue
-          games++; if (mine < opts) wins++
-        }
-      }
-      if (games > 0) { const rate = wins / games; if (!h2h || rate > h2h.rate) h2h = { id: pl.id, rate } }
-    }
-    if (h2h) mk('👑', 'Head-to-head king', h2h.id, `beats rivals ${Math.round(h2h.rate * 100)}% of the time`)
-
     const leagueFreq = new Map<string, number>()
     for (const p of picks) leagueFreq.set(p.driver_id, (leagueFreq.get(p.driver_id) ?? 0) + 1)
     const mostDrafted = [...leagueFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
