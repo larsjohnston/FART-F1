@@ -15,7 +15,8 @@ interface PlayerStat {
   avgPoints: number | null; bestWeek: number | null; worstWeek: number | null
   mostPicked: string | null; positions: number[]
 }
-interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; error?: string }
+interface Superlative { emoji: string; label: string; name: string; color: string; photoUrl: string | null; detail: string }
+interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; superlatives?: Superlative[]; error?: string }
 
 type Col = {
   key: string; label: [string, string]; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
@@ -252,6 +253,27 @@ export default function StatsPage() {
               </tbody>
             </table>
           </div>
+
+          {data.superlatives && data.superlatives.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 15, margin: '20px 0 6px' }}>Superlatives</h3>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {data.superlatives.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid var(--line)', borderLeft: `4px solid ${s.color}`, borderRadius: 10, padding: '10px 12px' }}>
+                    <span style={{ fontSize: 20 }}>{s.emoji}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{s.label}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <PlayerAvatar name={s.name} color={s.color} photoUrl={s.photoUrl} size={22} />
+                        <span style={{ fontWeight: 700 }}>{s.name}</span>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', maxWidth: 150 }}>{s.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           {data.mostDrafted.length > 0 && (
             <div style={{ marginTop: 16 }}>
