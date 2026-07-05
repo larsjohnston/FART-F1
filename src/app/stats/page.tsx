@@ -11,11 +11,9 @@ interface DriverStat {
 }
 interface TopPick { name: string; count: number }
 interface PlayerStat {
-  id: string; name: string; color: string; picks: number; avgFinish: number | null
-  topPicks: TopPick[]; bogey: string | null
-  best: { driver: string; finish: number } | null; worst: { driver: string; finish: number } | null; weeklyWins: number
-  avgPoints: number | null; mostPicked: string | null; firsts: number; lasts: number; championships: number
-  photoUrl?: string | null
+  id: string; name: string; color: string; photoUrl?: string | null
+  avgPoints: number | null; bestWeek: number | null; worstWeek: number | null
+  mostPicked: string | null; positions: number[]
 }
 interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; error?: string }
 
@@ -46,10 +44,9 @@ const PCOLS: PCol[] = [
     </span>
   ) },
   { key: 'avgPoints', label: ['Avg', 'Pts'], num: true, align: 'right', defDir: 'asc', get: p => p.avgPoints, cell: p => (p.avgPoints != null ? String(p.avgPoints) : '–') },
+  { key: 'bestWeek', label: ['Best', 'Wk'], num: true, align: 'right', defDir: 'asc', get: p => p.bestWeek, cell: p => (p.bestWeek != null ? String(p.bestWeek) : '–') },
+  { key: 'worstWeek', label: ['Worst', 'Wk'], num: true, align: 'right', defDir: 'desc', get: p => p.worstWeek, cell: p => (p.worstWeek != null ? String(p.worstWeek) : '–') },
   { key: 'mostPicked', label: ['Most', 'Picked'], num: false, align: 'left', defDir: 'asc', get: p => p.mostPicked, cell: p => p.mostPicked ?? '–' },
-  { key: 'firsts', label: ['Weekly', 'Wins'], num: true, align: 'right', defDir: 'desc', get: p => p.firsts, cell: p => String(p.firsts) },
-  { key: 'lasts', label: ['Weekly', 'Lasts'], num: true, align: 'right', defDir: 'desc', get: p => p.lasts, cell: p => String(p.lasts) },
-  { key: 'championships', label: ['FART', 'titles'], num: true, align: 'right', defDir: 'desc', get: p => p.championships, cell: p => (p.championships > 0 ? `🏆 ${p.championships}` : '0') },
 ]
 
 export default function StatsPage() {
@@ -182,7 +179,7 @@ export default function StatsPage() {
       {data && view === 'players' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            Lifetime — all seasons (2022–present). Tap a column to sort. Points are golf-scored — lower is better.
+            This season ({CURRENT_SEASON}). Tap a column to sort. Points are golf-scored — lower is better. All-time stats live on the History tab.
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -224,6 +221,38 @@ export default function StatsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Weekly finishing-position distribution this season. */}
+          <h3 style={{ fontSize: 15, margin: '20px 0 6px' }}>Weekly finishes</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {['Player', '1st', '2nd', '3rd', '4th'].map((h, i) => (
+                    <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '6px 6px', fontWeight: 600, color: 'var(--muted)', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...data.players].sort((a, b) => (b.positions[0] ?? 0) - (a.positions[0] ?? 0)).map(p => (
+                  <tr key={p.id}>
+                    <td style={{ padding: '6px 6px', whiteSpace: 'nowrap', borderBottom: '1px solid var(--line)', borderLeft: `3px solid ${p.color}` }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <PlayerAvatar name={p.name} color={p.color} photoUrl={p.photoUrl} size={26} />
+                        <span style={{ fontWeight: 700 }}>{p.name}</span>
+                      </span>
+                    </td>
+                    {[0, 1, 2, 3].map(i => (
+                      <td key={i} style={{ textAlign: 'right', padding: '6px 6px', borderBottom: '1px solid var(--line)', color: (p.positions[i] ?? 0) === 0 ? 'var(--muted)' : 'var(--text)' }}>
+                        {p.positions[i] ?? 0}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
           {data.mostDrafted.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <h3 style={{ fontSize: 15 }}>Most fought-over (leaguewide)</h3>
