@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
     // draft's picks scored by the pool rule) or back-filled prior round yields one
     // week's per-player totals. The Players tab is CURRENT SEASON only; History
     // covers all seasons. ----------
-    const weeks: Record<string, number>[] = []
+    const weeks: { round: number; totals: Record<string, number> }[] = []
     const liveRounds = new Set<number>()
     for (const r of races ?? []) {
       const finish = new Map<string, number>()
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       if (Object.keys(totals).length) {
         liveRounds.add(r.round)
         // Skip all-zero weeks — an unplayed/placeholder round nobody scored in.
-        if (Object.values(totals).some(v => v > 0)) weeks.push(totals)
+        if (Object.values(totals).some(v => v > 0)) weeks.push({ round: r.round, totals })
       }
     }
     // Back-filled prior rounds (points-only), skipping any round already scored live.
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
       m[r.player_id] = (m[r.player_id] ?? 0) + r.points
       priorByRound.set(r.round, m)
     }
-    for (const m of priorByRound.values()) if (Object.values(m).some(v => v > 0)) weeks.push(m)
+    for (const [round, m] of priorByRound) if (Object.values(m).some(v => v > 0)) weeks.push({ round, totals: m })
 
     // Most-picked driver — current-season picks only.
     const pickFreqByPlayer = new Map<string, Map<string, number>>()
@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
 
     // ---------- Player stats — CURRENT SEASON, from the weekly totals above ----------
     const playerStats = (players ?? []).map(pl => {
-      const myWeeks = weeks.map(w => w[pl.id]).filter((v): v is number => typeof v === 'number')
+      const myWeeks = weeks.map(w => w.totals[pl.id]).filter((v): v is number => typeof v === 'number')
       const n = myWeeks.length
       const avgPoints = n ? round1(myWeeks.reduce((s, x) => s + x, 0) / n) : null
       const bestWeek = n ? Math.min(...myWeeks) : null   // lowest weekly total (golf = best)
@@ -187,9 +187,9 @@ export async function GET(req: NextRequest) {
       // better place). positions[0]=1sts … positions[3]=4ths.
       const positions = [0, 0, 0, 0]
       for (const w of weeks) {
-        const mine = w[pl.id]
+        const mine = w.totals[pl.id]
         if (typeof mine !== 'number') continue
-        const rank = 1 + Object.values(w).filter(v => v < mine).length
+        const rank = 1 + Object.values(w.totals).filter(v => v < mine).length
         if (rank >= 1 && rank <= 4) positions[rank - 1]++
       }
       const fm = pickFreqByPlayer.get(pl.id)
@@ -200,12 +200,75 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    // ---------- Fun superlatives (current season) — PROPOSAL for review ----------
+    const shortNm = (s: string) => s.replace(/\s+Grand Prix$/i, '')
+    const roundName = new Map((races ?? []).map(r => [r.round, shortNm(r.name)]))
+    const byId = new Map((players ?? []).map(p => [p.id, p]))
+    const ordered = [...weeks].sort((a, b) => a.round - b.round)
+    const superlatives: { emoji: string; label: string; name: string; color: string; photoUrl: string | null; detail: string }[] = []
+    const mk = (emoji: string, label: string, playerId: string, detail: string) => {
+      const p = byId.get(playerId)
+      if (p) superlatives.push({ emoji, label, name: p.name, color: p.color, photoUrl: p.photo_url ?? null, detail })
+    }
+
+    // Best / worst single week (lowest / highest weekly total by anyone).
+    let bestW: { pid: string; pts: number; round: number } | null = null
+    let worstW: { pid: string; pts: number; round: number } | null = null
+    for (const w of ordered) for (const [pid, pts] of Object.entries(w.totals)) {
+      if (!bestW || pts < bestW.pts) bestW = { pid, pts, round: w.round }
+      if (!worstW || pts > worstW.pts) worstW = { pid, pts, round: w.round }
+    }
+    if (bestW) mk('🏁', 'Best week', bestW.pid, `${bestW.pts} pts · ${roundName.get(bestW.round) ?? `R${bestW.round}`}`)
+    if (worstW) mk('🐢', 'Worst week', worstW.pid, `${worstW.pts} pts · ${roundName.get(worstW.round) ?? `R${worstW.round}`}`)
+
+    // Consistency: smallest vs largest best→worst weekly swing.
+    const spreads = (players ?? []).map(pl => {
+      const mine = weeks.map(w => w.totals[pl.id]).filter((v): v is number => typeof v === 'number')
+      return mine.length >= 2 ? { id: pl.id, spread: Math.max(...mine) - Math.min(...mine) } : null
+    }).filter((x): x is { id: string; spread: number } => x !== null)
+    if (spreads.length) {
+      const consistent = spreads.reduce((a, b) => (b.spread < a.spread ? b : a))
+      const volatile = spreads.reduce((a, b) => (b.spread > a.spread ? b : a))
+      mk('🎯', 'Most consistent', consistent.id, `${consistent.spread}-pt swing, best to worst`)
+      mk('🎢', 'Boom or bust', volatile.id, `${volatile.spread}-pt swing`)
+    }
+
+    // Longest streak of consecutive weekly wins.
+    let hotStreak: { id: string; s: number } | null = null
+    for (const pl of players ?? []) {
+      let cur = 0, best = 0
+      for (const w of ordered) {
+        const mine = w.totals[pl.id]
+        if (typeof mine !== 'number') { cur = 0; continue }
+        const rank = 1 + Object.values(w.totals).filter(v => v < mine).length
+        if (rank === 1) { cur++; best = Math.max(best, cur) } else cur = 0
+      }
+      if (!hotStreak || best > hotStreak.s) hotStreak = { id: pl.id, s: best }
+    }
+    if (hotStreak && hotStreak.s >= 2) mk('🔥', 'Hot streak', hotStreak.id, `${hotStreak.s} weekly wins in a row`)
+
+    // Head-to-head: who beats their rivals most often, week to week.
+    let h2h: { id: string; rate: number } | null = null
+    for (const pl of players ?? []) {
+      let wins = 0, games = 0
+      for (const w of weeks) {
+        const mine = w.totals[pl.id]
+        if (typeof mine !== 'number') continue
+        for (const [oid, opts] of Object.entries(w.totals)) {
+          if (oid === pl.id) continue
+          games++; if (mine < opts) wins++
+        }
+      }
+      if (games > 0) { const rate = wins / games; if (!h2h || rate > h2h.rate) h2h = { id: pl.id, rate } }
+    }
+    if (h2h) mk('👑', 'Head-to-head king', h2h.id, `beats rivals ${Math.round(h2h.rate * 100)}% of the time`)
+
     const leagueFreq = new Map<string, number>()
     for (const p of picks) leagueFreq.set(p.driver_id, (leagueFreq.get(p.driver_id) ?? 0) + 1)
     const mostDrafted = [...leagueFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([id, count]) => ({ name: driverName.get(id) ?? id, count }))
 
-    return NextResponse.json({ ok: true, circuitName, drivers, players: playerStats, mostDrafted })
+    return NextResponse.json({ ok: true, circuitName, drivers, players: playerStats, mostDrafted, superlatives })
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: String(e?.message ?? e) }, { status: 500 })
   }
