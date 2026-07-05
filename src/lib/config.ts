@@ -27,12 +27,13 @@ export const SUPABASE_SCHEMA = process.env.NEXT_PUBLIC_SUPABASE_SCHEMA ?? 'publi
  *  the cross-league switcher only shows where it's turned on. */
 export const APP_MASTER = process.env.NEXT_PUBLIC_APP_MASTER === '1'
 
-export interface LeagueLink { id: string; name: string; url: string; match: string }
-/** The known pools and their production domains. `match` is a substring of the
- *  domain used to highlight which league you're currently on. */
+export interface LeagueLink { id: string; name: string; url: string; match: string; schema: string }
+/** The known pools and their production domains + Postgres schemas (all pools
+ *  share one Supabase project). `match` is a domain substring used to highlight
+ *  the current league; `schema` lets the app master fan writes out to every pool. */
 export const LEAGUES: LeagueLink[] = [
-  { id: 'fart-e', name: 'Fart E (ours)', url: 'https://fart-f1.vercel.app', match: 'fart-f1' },
-  { id: 'fart-a', name: 'Fart A', url: 'https://fart-a.vercel.app', match: 'fart-a' },
+  { id: 'fart-e', name: 'Fart E (ours)', url: 'https://fart-f1.vercel.app', match: 'fart-f1', schema: 'public' },
+  { id: 'fart-a', name: 'Fart A', url: 'https://fart-a.vercel.app', match: 'fart-a', schema: 'fart_a' },
 ]
 
 /** Boston Pizza "Beer Tab" reward on the Championship board (3rd/4th cover the
