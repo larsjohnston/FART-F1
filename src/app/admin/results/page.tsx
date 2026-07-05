@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { usePlayer } from '@/lib/players/context'
 import NamePicker from '@/components/NamePicker'
-import { CURRENT_SEASON } from '@/lib/config'
+import { CURRENT_SEASON, APP_MASTER, LEAGUES } from '@/lib/config'
 
 const shortName = (n: string) => n.replace(/\s+Grand Prix$/i, '')
 
@@ -79,17 +79,22 @@ function EnterResultsInner() {
     if (!race) return
     setBusy(true); setMsg('Saving…')
     const gridById = new Map(drivers.map(d => [d.id, d.grid]))
-    const rows = Object.entries(pos)
-      .map(([driver_id, v]) => ({ driver_id, n: Math.round(Number(v)) }))
-      .filter(({ n }) => Number.isFinite(n) && n > 0)
-      .map(({ driver_id, n }) => ({
-        race_id: race!.id, driver_id, finish_position: n,
-        grid: gridById.get(driver_id) ?? null, status: 'Manual', provisional: true,
-      }))
-    if (!rows.length) { setBusy(false); setMsg('Enter at least one finishing position.'); return }
-    const { error } = await supabase.from('results').upsert(rows, { onConflict: 'race_id,driver_id' })
+    const finishes = Object.entries(pos)
+      .map(([driver_id, v]) => ({ driver_id, finish_position: Math.round(Number(v)), grid: gridById.get(driver_id) ?? null }))
+      .filter(f => Number.isFinite(f.finish_position) && f.finish_position > 0)
+    if (!finishes.length) { setBusy(false); setMsg('Enter at least one finishing position.'); return }
+    // Saves provisional results to this pool — and to every pool when the app
+    // master enters them (they share one Supabase project).
+    const res = await fetch('/api/results/manual', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ season: CURRENT_SEASON, round: race.round, finishes }),
+    }).then(r => r.json()).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }))
     setBusy(false)
-    setMsg(error ? `Error: ${error.message}` : `Saved ${rows.length} provisional results for ${city}. Standings updated; official results will overwrite these.`)
+    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+    const label = (s: string) => LEAGUES.find(l => l.schema === s)?.name ?? s
+    const parts = (res.results ?? []).map((r: { schema: string; saved: number; error?: string }) =>
+      `${label(r.schema)}: ${r.error ? r.error : `${r.saved} saved`}`)
+    setMsg(`Saved ${city} preliminary results — ${parts.join(' · ')}. Official results overwrite these when they sync.`)
   }
 
   return (
@@ -99,6 +104,7 @@ function EnterResultsInner() {
       <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
         Manually enter the finishing position for each driver (lowest = winner). These score immediately as
         <b> provisional</b> and are <b>automatically overwritten</b> when the official results post (~30 min after the race).
+        {APP_MASTER && <> As app master, saving here updates <b>every league</b> at once.</>}
       </p>
       {hasOfficial && (
         <p style={{ color: 'var(--warn)', fontSize: 12, marginTop: 0 }}>
