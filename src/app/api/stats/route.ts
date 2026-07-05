@@ -80,7 +80,11 @@ export async function GET(req: NextRequest) {
         const pt = pts.get(p.driver_id)
         if (pt != null) totals[p.player_id] = (totals[p.player_id] ?? 0) + pt
       }
-      if (Object.keys(totals).length) { liveRounds.add(r.round); weeks.push(totals) }
+      if (Object.keys(totals).length) {
+        liveRounds.add(r.round)
+        // Skip all-zero weeks — an unplayed/placeholder round nobody scored in.
+        if (Object.values(totals).some(v => v > 0)) weeks.push(totals)
+      }
     }
     // Back-filled prior rounds (points-only), skipping any round already scored live.
     const priorByRound = new Map<number, Record<string, number>>()
@@ -90,7 +94,7 @@ export async function GET(req: NextRequest) {
       m[r.player_id] = (m[r.player_id] ?? 0) + r.points
       priorByRound.set(r.round, m)
     }
-    for (const m of priorByRound.values()) if (Object.keys(m).length) weeks.push(m)
+    for (const m of priorByRound.values()) if (Object.values(m).some(v => v > 0)) weeks.push(m)
 
     // Most-picked driver — current-season picks only.
     const pickFreqByPlayer = new Map<string, Map<string, number>>()
