@@ -192,6 +192,9 @@ export default function DraftPage() {
 
   async function pick(driverId: string) {
     if (!draft || !state || !actingAs) return
+    // Only the player on the clock picks for themselves; the commissioner is the
+    // only one who may pick on someone else's behalf. Everyone else is view-only.
+    if (!yours && !actingAs.is_commissioner) return
     try {
       await makePick(draft, state, driverId, actingAs.id)
       // Best-effort push: tell the next player it's their turn + others the pick.
@@ -264,10 +267,15 @@ export default function DraftPage() {
           </button>
         </div>
       )}
-      {slot && !yours && (
+      {slot && !yours && actingAs.is_commissioner && (
         <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--warn)' }}>
-          It&apos;s {onClockName}&apos;s turn. You can still pick for them if they&apos;re away — it&apos;ll show as
-          &quot;picked by {actingAs.name}&quot;.
+          It&apos;s {onClockName}&apos;s turn. As commissioner you can pick for them if they&apos;re away — it&apos;ll
+          show as &quot;picked by {actingAs.name}&quot;.
+        </div>
+      )}
+      {slot && !yours && !actingAs.is_commissioner && (
+        <div style={{ padding: '8px 14px', fontSize: 12, color: 'var(--muted)' }}>
+          It&apos;s {onClockName}&apos;s turn — sit tight. Only they (or the commissioner) can make this pick.
         </div>
       )}
       {complete ? (
@@ -355,7 +363,7 @@ export default function DraftPage() {
       ) : (
         <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {drivers.map(d => (
-            <DriverCard key={d.id} d={d} canPick={!!slot} onPick={() => pick(d.id)} />
+            <DriverCard key={d.id} d={d} canPick={!!slot && (yours || actingAs.is_commissioner)} onPick={() => pick(d.id)} />
           ))}
         </div>
       )}
