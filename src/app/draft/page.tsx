@@ -15,6 +15,8 @@ import { TEAM_COLORS } from '@/lib/f1/teamColors'
 
 interface ChampDriver { id: string; name: string; team: string; constructorId: string; champPos: number; points: number | null }
 interface ChampCons { id: string; name: string; color: string; champPos: number; points: number | null }
+interface RaceResultRow { pos: number; driver: string; team: string; teamColor: string; grid: number | null; status: string }
+interface RaceResult { id: string; round: number; name: string; date: string | null; provisional: boolean; results: RaceResultRow[] }
 
 export default function DraftPage() {
   const { actingAs } = usePlayer()
@@ -25,7 +27,9 @@ export default function DraftPage() {
   const [raceName, setRaceName] = useState('')
   const [view, setView] = useState<'players' | 'sequence'>('players')
   const [champ, setChamp] = useState<{ drivers: ChampDriver[]; constructors: ChampCons[] } | null>(null)
-  const [champView, setChampView] = useState<'drivers' | 'constructors'>('drivers')
+  const [champView, setChampView] = useState<'drivers' | 'constructors' | 'results'>('drivers')
+  const [raceResults, setRaceResults] = useState<RaceResult[] | null>(null)
+  const [resultsRaceId, setResultsRaceId] = useState<string>('')
   const [commentary, setCommentary] = useState<CommentaryRow[]>([])
 
   const loadComms = useCallback(async (draftId: string) => {
@@ -140,6 +144,16 @@ export default function DraftPage() {
       .then(d => { if (d.ok) setChamp({ drivers: d.drivers, constructors: d.constructors }) })
       .catch(() => {})
   }, [])
+  useEffect(() => {
+    fetch(`/api/results?season=${CURRENT_SEASON}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) return
+        setRaceResults(d.races)
+        if (d.races[0]) setResultsRaceId(d.races[0].id)
+      })
+      .catch(() => {})
+  }, [])
 
   const tab = (active: boolean): CSSProperties => ({
     flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, border: '1px solid var(--line)',
@@ -157,8 +171,11 @@ export default function DraftPage() {
         <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
           <button onClick={() => setChampView('drivers')} style={tab(champView === 'drivers')}>Drivers</button>
           <button onClick={() => setChampView('constructors')} style={tab(champView === 'constructors')}>Constructors</button>
+          <button onClick={() => setChampView('results')} style={tab(champView === 'results')}>Results</button>
         </div>
-        {!champ ? (
+        {champView === 'results' ? (
+          <RaceResultsView races={raceResults} raceId={resultsRaceId} onSelect={setResultsRaceId} />
+        ) : !champ ? (
           <p style={{ color: 'var(--muted)' }}>Loading…</p>
         ) : champView === 'drivers' ? (
           <div style={{ display: 'grid', gap: 6 }}>
@@ -368,5 +385,56 @@ export default function DraftPage() {
         </div>
       )}
     </main>
+  )
+}
+
+/** Actual F1 race classification, one week at a time — no player/draft data.
+ *  A week selector over every race with results (newest first) and the full
+ *  finishing order with grid + DNF status. */
+function RaceResultsView({ races, raceId, onSelect }: {
+  races: RaceResult[] | null
+  raceId: string
+  onSelect: (id: string) => void
+}) {
+  if (!races) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
+  if (!races.length) return <p style={{ color: 'var(--muted)' }}>No race results yet this season.</p>
+  const race = races.find(r => r.id === raceId) ?? races[0]
+  const isDnf = (s: string) => s !== 'Finished' && s !== 'Lapped' && s !== 'Manual' && !s.startsWith('+')
+
+  return (
+    <div>
+      <select
+        value={race.id}
+        onChange={e => onSelect(e.target.value)}
+        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--line)',
+          background: 'var(--panel-2)', color: 'var(--text)', fontSize: 14, fontWeight: 700, marginBottom: 10 }}
+      >
+        {races.map(r => (
+          <option key={r.id} value={r.id}>R{r.round} · {r.name}</option>
+        ))}
+      </select>
+
+      {race.provisional && (
+        <div style={{ fontSize: 11, color: 'var(--warn)', marginBottom: 8 }}>
+          ⚠ Preliminary — official classification not synced yet (DNFs may be missing).
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 4 }}>
+        {race.results.map(row => (
+          <div key={`${row.pos}-${row.driver}`} style={{ display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 12px', border: '1px solid var(--line)', borderLeft: `4px solid ${row.teamColor}`, borderRadius: 8 }}>
+            <span style={{ width: 24, fontWeight: 800, color: row.pos === 1 ? 'var(--warn)' : 'var(--muted)' }}>{row.pos}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 700 }}>{row.driver}</span>
+              {row.team ? <span style={{ color: row.teamColor, fontSize: 12 }}> · {row.team}</span> : null}
+            </span>
+            {isDnf(row.status)
+              ? <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent)', letterSpacing: 0.5 }}>DNF</span>
+              : row.grid != null && <span style={{ fontSize: 11, color: 'var(--muted)' }}>grid P{row.grid}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
