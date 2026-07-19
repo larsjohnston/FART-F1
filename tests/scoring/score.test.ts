@@ -12,6 +12,19 @@ describe('rankDraftedPoints', () => {
     const finish = new Map([['x', 22], ['y', 21], ['z', 1]])
     expect(Object.fromEntries(rankDraftedPoints(['x', 'y', 'z'], finish))).toEqual({ z: 1, y: 2, x: 3 })
   })
+  it('a drafted driver with no result ranks LAST, not 0', () => {
+    // a,b classified; d DNF (no row) → d must rank after every finisher, never beat one
+    const finish = new Map([['a', 1], ['b', 2]])
+    expect(Object.fromEntries(rankDraftedPoints(['a', 'b', 'd'], finish))).toEqual({ a: 1, b: 2, d: 3 })
+  })
+  it('multiple no-result drivers fill the tail ranks in order', () => {
+    const finish = new Map([['a', 5], ['b', 3]])
+    // classified by finish: b(3)→1, a(5)→2; then missing c,d get 3,4
+    expect(Object.fromEntries(rankDraftedPoints(['a', 'b', 'c', 'd'], finish))).toEqual({ b: 1, a: 2, c: 3, d: 4 })
+  })
+  it('no results at all → empty map (unplayed week stays 0)', () => {
+    expect(rankDraftedPoints(['a', 'b'], new Map()).size).toBe(0)
+  })
 })
 
 describe('scoreRace', () => {
@@ -25,8 +38,13 @@ describe('scoreRace', () => {
     const picks = { p1: ['a', 'd'], p2: ['b', 'f'] } // p1: 1+3=4, p2: 2+4=6
     expect(scoreRace(picks, results)).toEqual({ p1: 4, p2: 6 })
   })
-  it('treats a driver with no result as 0 contribution', () => {
-    expect(scoreRace({ p1: ['zzz'] }, results)).toEqual({ p1: 0 })
+  it('a DNF (no result) ranks last in the pool instead of scoring 0', () => {
+    // pool a,b,zzz; a,b classified 1,2; zzz has no row → ranks last (3), not 0
+    const picks = { p1: ['a', 'zzz'], p2: ['b'] } // p1: 1+3=4, p2: 2
+    expect(scoreRace(picks, results)).toEqual({ p1: 4, p2: 2 })
+  })
+  it('an unraced week (no results) scores everyone 0', () => {
+    expect(scoreRace({ p1: ['a', 'b'], p2: ['c'] }, [])).toEqual({ p1: 0, p2: 0 })
   })
 })
 
