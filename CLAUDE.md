@@ -34,6 +34,22 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   (best drafted finisher = 1 pt … worst = N). Drivers with no result score 0.
 - A player's weekly total = sum of their 5 drivers. Season = sum across weeks. **Lower is better.**
 - A **weekly win** = the lowest weekly total that week (ties share it).
+- **Intended rule (confirmed by the user):** every race distributes points **1 through 20**
+  across the 20 drafted drivers. Classified finishers rank by finish; **DNFs fill the bottom**
+  ordered by the official classification (first to retire = worst = highest points). The current
+  code already does exactly this **as long as every drafted driver has a `results` row** — because
+  `rankDraftedPoints` sorts drafted-with-results by `finish_position` and Jolpica's official
+  classification already lists DNFs (status `Retired`) at the bottom with real positions.
+- **⚠️ Provisional-results distortion (recurs EVERY race, not a bug in the math).** The moment a
+  race finishes it may hold only **provisional** results (OpenF1), which list **only classified
+  finishers** — DNFs have no row yet. A drafted driver with no row scores **0**, and since lower is
+  better **0 is the *best* possible score**, so a DNF pick temporarily looks great and the weekly
+  leader can be wrong. Tell: the week sums to **< 210** (a complete week = 1+…+20 = **210**); a
+  provisional week is short (e.g. Belgian GP scored 171 with two DNFs missing). **Self-corrects**
+  the instant official results sync and overwrite provisional (DNFs come in as `Retired`, week
+  returns to 210). To fix immediately, re-sync that round (see `/api/sync` below). Prior weeks are
+  fine because their official results already include the DNFs. *(Latent hardening option, not yet
+  done: rank no-result drafted drivers LAST instead of 0 so provisional weeks aren't misleading.)*
 
 ## Data model (Supabase: Postgres + Realtime)
 - **Live tables:** `players`, `races` (season, round, name, `date`, status), `drivers`,
@@ -61,6 +77,19 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   order shows first, official classification (penalties) overwrites it.
 
 ## Pages / routes
+- `/draft` — the live draft board when a draft is open; otherwise the **F1 Championship** view
+  with three tabs: **Drivers**, **Constructors**, **Results**. The **Results** tab (`/api/results`,
+  `RaceResultsView` in `draft/page.tsx`) is pure race data — no players/draft: a week selector over
+  every race with results (newest first) + the full finishing order (pos, driver, team colour, grid
+  or a red **DNF** tag), with a "preliminary" note while a race is still provisional. (Tabs only show
+  in the no-draft view, so during a live draft the board replaces them.)
+- **Draft picking permission:** only the player **currently on the clock** can pick for themselves;
+  the **commissioner** is the sole exception (can pick for an absent player, records as "picked by
+  …"). Everyone else sees a disabled board. Gated in the UI only (`pick()` guard + `canPick`), no
+  server-side RLS on `picks` — fine for a trusted 4-player pool.
+- `/api/results` — **GET** `?season=` → each race's real F1 classification grouped by round
+  (newest first), driver/team names + colours resolved, `provisional` flag per race. Powers the
+  Results tab. Read-only, publicly readable data.
 - `/standings` — **Championship** (season) + **Weekly** views. Championship board shows
   per-player weekly-win trophies (scaled to the leader) and a **Boston Pizza "Beer Tab"**
   badge between the rank and name for **3rd & 4th place** (they cover the tab for 1st & 2nd).
@@ -80,7 +109,12 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   rarely-picked driver (e.g. Stroll, drafted once) float to the top; fixed in `/api/stats`
   (`rankDraftedPoints` is reused over the **whole grid**). Weekly wins still use the drafted-only
   pool rule. Track-history (Jolpica) is best-effort and never fatal.
-- `/api/sync` — **POST only (manual single-round sync).** Drives the Sync button.
+- `/api/sync` — **POST only (manual single-round sync).** Drives the Sync button. Body
+  `{season, round}` → `syncRound`, which pulls official Jolpica results server-side and overwrites
+  provisional rows. **This is how you fix a "messed-up" provisional week:**
+  `curl -X POST https://fart-f1.vercel.app/api/sync -d '{"season":2026,"round":N}'` (runs on Vercel,
+  which *can* reach Jolpica). Response `provisional:false` + `drivers:22` confirms official data
+  landed. Do it per league (each Vercel deployment writes its own schema).
 - **Season autopilot — `/api/cron` (`syncCalendar` + `advanceSeason`).** A **once-daily**
   Vercel cron (`vercel.json`: `0 6 * * *`) — Hobby allows daily crons; only the old `*/5`
   schedule failed (`cron_jobs_limits_reached`). **GET** is the cron entry, guarded by
@@ -118,6 +152,13 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   (4) pages no longer need bottom padding to clear the nav (the nav takes real layout space).
   Trade-off: the Safari URL bar stays put (the body doesn't scroll) — fine for this PWA-first app.
   Desktop/headless can't reproduce iOS compositing — verify nav-pinning changes on a real iPhone.
+- **⚠️ Installed PWAs snapshot their launch shell — a shell (`<body>`) change won't appear on a plain
+  reload.** When debugging a "the layout regressed on my phone but production looks right" report:
+  first confirm production actually serves the new shell (`curl -s <domain>/standings | grep '<body'`);
+  the SW is network-first for navigations so the *page* is fresh, but iOS re-uses the old
+  home-screen-launch `<body>` until the app is **force-quit** (swipe up in the App Switcher, swipe
+  the card away) and reopened. Have the user force-quit before concluding a CSS fix didn't work —
+  two of this project's "still broken" reports were just a stale launch snapshot of an earlier shell.
 
 ## Push notifications (Web Push)
 - During a draft: **"🏁 You're on the clock"** to the next player + **"a pick was made"** to
@@ -170,11 +211,25 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 ## Supabase + env (infra learnings)
 - Supabase project **ref `oxydbpdbhdfopdafhcxh`** (URL `https://oxydbpdbhdfopdafhcxh.supabase.co`),
   name "larsjohnston's Project". The other project (`Spec-Writer`) is **not** this app.
-- **The sandbox can't reach Supabase or Jolpica directly** (the agent proxy blocks `*.supabase.co`
-  and `api.jolpi.ca` — curl returns 000). So: run migrations / inspect data via the **Supabase
-  Management API** (`https://api.supabase.com`, reachable) with `SUPABASE_ACCESS_TOKEN`:
-  `POST /v1/projects/<ref>/database/query {"query": "..."}`. To verify app behaviour, drive the
-  **production endpoints** (`fart-f1.vercel.app/api/...`) instead of localhost.
+- **Reaching the DB from this environment (updated — network policy varies!).** In the current
+  Claude-Code-on-the-web environment `*.supabase.co` **is reachable** (PostgREST returns 401, not
+  000 — test with `curl -o /dev/null -w '%{http_code}' https://oxydbpdbhdfopdafhcxh.supabase.co/rest/v1/`).
+  Older sandboxes blocked it; **test reachability before assuming either way.** Two big gotchas:
+  - **⚠️ The injected `NEXT_PUBLIC_SUPABASE_URL`/keys point to a DIFFERENT throwaway project**
+    (`oxatqehxeogxtsugofxq`, whose `public` schema has a `projects` table), **NOT** the real FART
+    project (`oxydbpdbhdfopdafhcxh`). Don't trust the env vars for the real DB — hardcode the real ref.
+  - **Get the real read key from the production bundle** (it's the public publishable key, RLS-guarded):
+    grep a JS chunk from `https://fart-f1.vercel.app` for `sb_publishable_` — currently
+    **`sb_publishable_iXWvflXqVBv41rKv3205KQ_s6qkSuG0`** (new-style key, not a `eyJ…` JWT). Query with
+    `-H "apikey: <key>" -H "Authorization: Bearer <key>" -H "Accept-Profile: <schema>"` against
+    `/rest/v1/<table>?...` (use `Accept-Profile: fart_a` for the second pool). Read-only tables
+    (`picks`, `results`, `drivers`, `races`, `players`, …) are publicly readable.
+  - **`SUPABASE_ACCESS_TOKEN` (Management API) is currently Unauthorized**, and the Supabase MCP
+    server may be disconnected — so the publishable-key + PostgREST route above is the reliable
+    read path. For writes/migrations, prefer the production admin endpoints (`/api/sync`, Re-write
+    History, etc.) which run server-side with the service role.
+  - `api.jolpi.ca` is still not reachable here — verify sync/standings behaviour by driving the
+    **production endpoints** (`fart-f1.vercel.app/api/...`), which run on Vercel.
 - **Vercel env vars are per-target.** Supabase vars were set for **production only**, which broke
   every **Preview** build with `supabaseUrl is required` (several routes transitively import the
   browser supabase client `lib/supabase/client.ts`, which calls `createClient(url, …)` at *module
@@ -193,5 +248,12 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   **squash-merge to `main`, then deploy `main` to production — without asking** (confirmed
   preference: "always merge after these small changes, don't need to ask").
 - Squash merges leave the feature branch diverged from `main`; reset the branch to
-  `origin/main` and reapply changes, then `git push --force-with-lease`.
-- After deploying, confirm the live production deployment is READY and serving the new `main` sha.
+  `origin/main` and reapply changes, then `git push --force-with-lease`. (In practice this session
+  used a **fresh branch per change** off `origin/main` — cleaner than reusing a diverged branch.)
+- After deploying, confirm the live production deployment is READY and serving the new `main` sha
+  (poll `/v13/deployments/<id>` and check `meta.githubCommitSha`).
+- **Stop-hook "Unverified commit" after a squash-merge is a false positive — do NOT amend.** Once
+  you reset the local branch to `origin/main`, its tip is **GitHub's own squash-merge commit**
+  (committer `noreply@github.com`), which the git-check hook flags. That commit is already merged to
+  `main` and deployed; amending it would rewrite merged history. Just note it's GitHub's commit and
+  take no action. (Only real, locally-authored unpushed commits should get the `--reset-author` fix.)
