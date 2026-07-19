@@ -31,25 +31,27 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 
 ## Scoring rule (`src/lib/scoring/score.ts`)
 - Drop the undrafted drivers, then rank the drafted field by finishing position
-  (best drafted finisher = 1 pt … worst = N). Drivers with no result score 0.
+  (best drafted finisher = 1 pt … worst = N). A drafted driver **with no result ranks LAST**
+  (appended after every classified driver), **not 0** — a DNF must never beat a real finisher.
+  Only exception: a race with **no results at all** scores everyone 0 (unplayed week stays all-0
+  and is skipped downstream).
 - A player's weekly total = sum of their 5 drivers. Season = sum across weeks. **Lower is better.**
 - A **weekly win** = the lowest weekly total that week (ties share it).
 - **Intended rule (confirmed by the user):** every race distributes points **1 through 20**
   across the 20 drafted drivers. Classified finishers rank by finish; **DNFs fill the bottom**
-  ordered by the official classification (first to retire = worst = highest points). The current
-  code already does exactly this **as long as every drafted driver has a `results` row** — because
-  `rankDraftedPoints` sorts drafted-with-results by `finish_position` and Jolpica's official
-  classification already lists DNFs (status `Retired`) at the bottom with real positions.
-- **⚠️ Provisional-results distortion (recurs EVERY race, not a bug in the math).** The moment a
-  race finishes it may hold only **provisional** results (OpenF1), which list **only classified
-  finishers** — DNFs have no row yet. A drafted driver with no row scores **0**, and since lower is
-  better **0 is the *best* possible score**, so a DNF pick temporarily looks great and the weekly
-  leader can be wrong. Tell: the week sums to **< 210** (a complete week = 1+…+20 = **210**); a
-  provisional week is short (e.g. Belgian GP scored 171 with two DNFs missing). **Self-corrects**
-  the instant official results sync and overwrite provisional (DNFs come in as `Retired`, week
-  returns to 210). To fix immediately, re-sync that round (see `/api/sync` below). Prior weeks are
-  fine because their official results already include the DNFs. *(Latent hardening option, not yet
-  done: rank no-result drafted drivers LAST instead of 0 so provisional weeks aren't misleading.)*
+  ordered by the official classification (first to retire = worst = highest points). Once official
+  results are in, DNFs carry status `Retired` with real positions, so they sort into the bottom
+  naturally; the **rank-last** fallback (above) keeps them at the bottom even *before* that.
+- **Provisional-results window (recurs EVERY race — now handled).** The moment a race finishes it may
+  hold only **provisional** results (OpenF1), which list **only classified finishers** — DNFs have no
+  row yet. Because a no-result drafted driver now **ranks last** (not 0), a provisional week already
+  scores a full **1–20 / sum 210** with DNF picks penalised, so the weekly leader is correct
+  immediately (verified: the Belgian GP provisional data scores identically to its official data).
+  The one caveat: the tail *order* among multiple simultaneous DNFs is stable-but-arbitrary until the
+  official classification syncs and resolves who-retired-first. Re-sync a round any time via
+  `/api/sync` (below) to pull official data. *(History note: before this fix a missing DNF scored 0 =
+  best, so provisional weeks summed < 210 and could crown the wrong leader — e.g. Belgian GP briefly
+  showed 171 with Lats "winning" on a phantom 0.)*
 
 ## Data model (Supabase: Postgres + Realtime)
 - **Live tables:** `players`, `races` (season, round, name, `date`, status), `drivers`,
