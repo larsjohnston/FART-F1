@@ -377,6 +377,18 @@ export default function DraftPage() {
             </div>
           )}
         </div>
+      ) : drivers.length === 0 ? (
+        // After-qualifying pools build the board from the qualifying grid; before
+        // that race's qualifying is synced there are no drivers to show. Say so
+        // instead of rendering a blank screen that looks like lost data.
+        <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 34, marginBottom: 10 }}>⏳</div>
+          <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: 16, marginBottom: 6 }}>Waiting on qualifying</div>
+          <div style={{ fontSize: 13, lineHeight: 1.45, maxWidth: 320, margin: '0 auto' }}>
+            The board for {raceName || 'this race'} fills once qualifying is synced — the draft opens
+            after quali. Nothing&apos;s missing; pull down to refresh, or check back after the session.
+          </div>
+        </div>
       ) : (
         <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {drivers.map(d => (
