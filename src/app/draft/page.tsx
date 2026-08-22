@@ -10,6 +10,7 @@ import OnTheClock from '@/components/OnTheClock'
 import PlayerAvatar from '@/components/PlayerAvatar'
 import NamePicker from '@/components/NamePicker'
 import EnableNotifications from '@/components/EnableNotifications'
+import Loading from '@/components/Loading'
 import { CURRENT_SEASON } from '@/lib/config'
 import { TEAM_COLORS } from '@/lib/f1/teamColors'
 
@@ -32,6 +33,7 @@ export default function DraftPage() {
   const [resultsRaceId, setResultsRaceId] = useState<string>('')
   const [commentary, setCommentary] = useState<CommentaryRow[]>([])
   const [refreshing, setRefreshing] = useState(false)
+  const [ready, setReady] = useState(false)
 
   const loadComms = useCallback(async (draftId: string) => {
     setCommentary(await loadCommentary(draftId))
@@ -130,7 +132,7 @@ export default function DraftPage() {
     )
   }, [loadComms])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { refresh().finally(() => setReady(true)) }, [refresh])
   useEffect(() => {
     if (!draft) return
     return subscribePicks(draft.id, refresh)
@@ -163,6 +165,10 @@ export default function DraftPage() {
 
   if (!actingAs) return <NamePicker />
 
+  // First load still in flight — show a spinner, not the "no draft open" /
+  // empty-board states, which would otherwise flash as if there were no data.
+  if (!ready) return <main style={{ padding: 16 }}><Loading /></main>
+
   // No draft open → the Draft tab shows the live F1 championship standings.
   if (!state || !draft) {
     return (
@@ -177,7 +183,7 @@ export default function DraftPage() {
         {champView === 'results' ? (
           <RaceResultsView races={raceResults} raceId={resultsRaceId} onSelect={setResultsRaceId} />
         ) : !champ ? (
-          <p style={{ color: 'var(--muted)' }}>Loading…</p>
+          <Loading />
         ) : champView === 'drivers' ? (
           <div style={{ display: 'grid', gap: 6 }}>
             {champ.drivers.map(d => (
@@ -418,7 +424,7 @@ function RaceResultsView({ races, raceId, onSelect }: {
   raceId: string
   onSelect: (id: string) => void
 }) {
-  if (!races) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
+  if (!races) return <Loading />
   if (!races.length) return <p style={{ color: 'var(--muted)' }}>No race results yet this season.</p>
   const race = races.find(r => r.id === raceId) ?? races[0]
   const isDnf = (s: string) => s !== 'Finished' && s !== 'Lapped' && s !== 'Manual' && !s.startsWith('+')

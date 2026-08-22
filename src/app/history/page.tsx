@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, type CSSProperties } from 'react'
+import Loading from '@/components/Loading'
 
 interface Standing { id: string; name: string; color: string; points: number }
 interface SeasonData { standings: Standing[]; races: { race_no: number; pts: Record<string, number> }[]; complete: boolean }
@@ -50,7 +51,7 @@ export default function HistoryPage() {
       <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>F.A.R.T. archive — golf scoring, lowest wins.</p>
 
       {err && <p style={{ color: 'var(--warn)' }}>Couldn&apos;t load: {err}</p>}
-      {!data && !err && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
+      {!data && !err && <Loading />}
 
       {data && (
         <>

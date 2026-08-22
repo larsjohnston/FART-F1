@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
 import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB, SHOW_PAYOUTS, WEEKLY_PAYOUTS } from '@/lib/config'
 import PlayerAvatar from '@/components/PlayerAvatar'
+import Loading from '@/components/Loading'
 
 interface SeasonRow { id: string; name: string; color: string; photoUrl: string | null; points: number; weeklyWins: number; money: number }
 interface WeekDriver { name: string; teamColor: string; pos: number; points: number; overall: number; pickedBy: string | null }
@@ -31,6 +32,7 @@ interface WeekOption { round: number; name: string }
 
 export default function StandingsPage() {
   const [view, setView] = useState<'season' | 'week'>('season')
+  const [loaded, setLoaded] = useState(false)
   const [seasonRows, setSeasonRows] = useState<SeasonRow[]>([])
   const [seasonProvisional, setSeasonProvisional] = useState(false)
   const [week, setWeek] = useState<Week | null>(null)
@@ -191,7 +193,7 @@ export default function StandingsPage() {
     setWeek({ raceName: race.name, hasResults: false, provisional: false, rows: [] })
   }, [])
 
-  useEffect(() => { loadSeasonAndOptions() }, [loadSeasonAndOptions])
+  useEffect(() => { loadSeasonAndOptions().finally(() => setLoaded(true)) }, [loadSeasonAndOptions])
   useEffect(() => { if (weekRound != null) loadWeek(weekRound) }, [weekRound, loadWeek])
 
   // Live: recompute on any results/picks change.
@@ -220,7 +222,9 @@ export default function StandingsPage() {
         <button onClick={() => setView('week')} style={tab(view === 'week')}>Weekly</button>
       </div>
 
-      {view === 'season' ? (
+      {!loaded ? (
+        <Loading />
+      ) : view === 'season' ? (
         <>
           {seasonProvisional && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: '#33260f', color: 'var(--warn)', fontSize: 12 }}>

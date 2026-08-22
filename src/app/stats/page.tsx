@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase/client'
 import { CURRENT_SEASON } from '@/lib/config'
 import { TEAM_COLORS } from '@/lib/f1/teamColors'
 import PlayerAvatar from '@/components/PlayerAvatar'
+import Loading from '@/components/Loading'
 
 interface DriverStat {
   id: string; name: string; team: string; constructorId: string; races: number
@@ -127,7 +128,7 @@ export default function StatsPage() {
       </div>
 
       {err && <p style={{ color: 'var(--warn)' }}>Couldn&apos;t load stats: {err}</p>}
-      {!data && !err && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
+      {!data && !err && <Loading />}
 
       {data && view === 'drivers' && (
         <>
