@@ -31,6 +31,7 @@ export default function DraftPage() {
   const [raceResults, setRaceResults] = useState<RaceResult[] | null>(null)
   const [resultsRaceId, setResultsRaceId] = useState<string>('')
   const [commentary, setCommentary] = useState<CommentaryRow[]>([])
+  const [refreshing, setRefreshing] = useState(false)
 
   const loadComms = useCallback(async (draftId: string) => {
     setCommentary(await loadCommentary(draftId))
@@ -386,8 +387,17 @@ export default function DraftPage() {
           <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: 16, marginBottom: 6 }}>Waiting on qualifying</div>
           <div style={{ fontSize: 13, lineHeight: 1.45, maxWidth: 320, margin: '0 auto' }}>
             The board for {raceName || 'this race'} fills once qualifying is synced — the draft opens
-            after quali. Nothing&apos;s missing; pull down to refresh, or check back after the session.
+            after quali. Nothing&apos;s missing; tap Refresh to check again.
           </div>
+          <button
+            onClick={async () => { setRefreshing(true); try { await refresh() } finally { setRefreshing(false) } }}
+            disabled={refreshing}
+            style={{ marginTop: 16, padding: '10px 20px', borderRadius: 10, border: '1px solid var(--line)',
+              background: 'var(--panel-2)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+              opacity: refreshing ? 0.6 : 1 }}
+          >
+            {refreshing ? 'Checking…' : '🔄 Refresh'}
+          </button>
         </div>
       ) : (
         <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
