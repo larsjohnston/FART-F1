@@ -200,15 +200,31 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   for commentary. New `set-state-in-effect` lint on browser-capability effects is suppressed inline
   on the exact `setState` line (same accepted pattern as the pre-existing `/standings`, `/draft` ones).
 
-## Deploying (Vercel REST API)
+## Deploying — BOTH projects are git-linked (auto-deploy, no manual step)
 - GitHub: `larsjohnston/FART-F1`, default branch `main`, repoId **1261728598**.
-- Vercel (Hobby): project `fart-f1` = `prj_cOADVHaJFnHIRk8zLarHqmdQDO1C`,
-  team `team_EVsXBTvNrtKoN6bciUT9LnKA`. Auth via `VERCEL_TOKEN` env var.
-- The project's git `link` is empty in the API, so deploy by repoId:
-  `POST /v13/deployments?teamId=…&forceNew=1` with
-  `{ name:"fart-f1", project:"prj_…", target:"production", gitSource:{ type:"github", repoId:1261728598, ref:"main" } }`,
-  then poll `/v13/deployments/<id>` until `readyState` is READY/ERROR/CANCELED.
-- Production domains: `fart-f1.vercel.app`, `fart-f1-lars-projects1981.vercel.app`.
+- Vercel team `team_EVsXBTvNrtKoN6bciUT9LnKA` (`lars-projects1981`), Pro plan.
+  - `fart-f1` = `prj_cOADVHaJFnHIRk8zLarHqmdQDO1C` — domains `fart-f1.vercel.app`,
+    `fart-f1-lars-projects1981.vercel.app`. Git-linked since the project's creation.
+  - `fart-a` = `prj_nh4c2HJ2NtMhiQJagER1QW6jTEhL` — domains `fart-a.vercel.app`,
+    `fart-a-lars-projects1981.vercel.app`. **Git-linked as of this era** (Project Settings → Git →
+    Connect Git Repository → `larsjohnston/FART-F1`; production branch auto-set to the repo's
+    default, `main` — there's no separate "production branch" field to set once linked).
+- **Both now deploy automatically on every push/merge to `main` — nothing to trigger by hand.**
+  After merging a PR, just **verify** rather than deploy:
+  `mcp__Vercel__get_project` (or `get_deployment`) → check `latestDeployment.readyState === "READY"`
+  and its commit sha matches the merge. Give the Vercel webhook a little time to fire and build
+  (tens of seconds) before checking.
+- **⚠️ History (no longer applicable, kept for context):** `fart-a` used to have `link: null` and
+  needed a manual `POST /v13/deployments?teamId=…&forceNew=1&{gitSource:{repoId,ref:"main"}}` deploy
+  via a `VERCEL_TOKEN`, run after every merge. That token's SSO session eventually expired
+  (`forbidden`, `saml: true`) and became a recurring blocker — fixed for good by linking the project
+  to GitHub instead of re-authenticating the token. **Do not reintroduce the manual-token deploy
+  path** — if a future session finds `fart-a` (or any project) unlinked again, relinking it in the
+  dashboard is the fix, not scripting around it.
+  - **Gotcha if this ever needs redoing:** Vercel's **"Redeploy"** button on an existing deployment
+    row **rebuilds that row's exact old commit snapshot** — it does *not* pull the current tip of
+    `main`. To deploy the actual latest commit after a fresh Git link, use **Deployments tab →
+    Create Deployment → pick branch `main`**, not Redeploy.
 
 ## Supabase + env (infra learnings)
 - Supabase project **ref `oxydbpdbhdfopdafhcxh`** (URL `https://oxydbpdbhdfopdafhcxh.supabase.co`),
@@ -242,18 +258,19 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 - **Currently set in Vercel:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
   `SUPABASE_SERVICE_ROLE_KEY` (all targets), `CRON_SECRET`, the four `VAPID*` keys, `F1_SEASON`.
   **Missing/parked:** `ANTHROPIC_API_KEY` (needed for The Booth).
-- The Vercel GitHub integration posts preview deploys + status on PRs; production is still deployed
-  by repoId (above), independent of those preview builds.
+- The Vercel GitHub integration posts preview deploys + status on PRs; production deploys
+  automatically on merge to `main` for both projects (see "Deploying" above).
 
 ## Workflow (user's standing preferences)
 - All work on the designated feature branch. For these small changes: open a PR,
-  **squash-merge to `main`, then deploy `main` to production — without asking** (confirmed
-  preference: "always merge after these small changes, don't need to ask").
-- Squash merges leave the feature branch diverged from `main`; reset the branch to
-  `origin/main` and reapply changes, then `git push --force-with-lease`. (In practice this session
-  used a **fresh branch per change** off `origin/main` — cleaner than reusing a diverged branch.)
-- After deploying, confirm the live production deployment is READY and serving the new `main` sha
-  (poll `/v13/deployments/<id>` and check `meta.githubCommitSha`).
+  **squash-merge to `main` — without asking** (confirmed preference: "always merge after these
+  small changes, don't need to ask"). Both Vercel projects now **auto-deploy on merge** (see
+  "Deploying" above) — there's no separate manual deploy step to perform anymore.
+  - **Fresh branch per change**, off `origin/main` each time — cleaner than reusing a branch that's
+    diverged from a prior squash-merge.
+- After merging, **verify** the live production deployment picked it up (`mcp__Vercel__get_project`
+  / `get_deployment`, check `readyState: "READY"` and the commit sha) rather than triggering
+  anything — give the webhook a short beat to build first.
 - **Stop-hook "Unverified commit" after a squash-merge is a false positive — do NOT amend.** Once
   you reset the local branch to `origin/main`, its tip is **GitHub's own squash-merge commit**
   (committer `noreply@github.com`), which the git-check hook flags. That commit is already merged to
