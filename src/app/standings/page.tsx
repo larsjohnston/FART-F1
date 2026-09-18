@@ -63,6 +63,9 @@ export default function StandingsPage() {
     const awardWeek = (weekPts: Record<string, number>) => {
       const vals = Object.values(weekPts)
       if (!vals.length) return
+      // Everyone scored 0 → an unplayed/missed round, not a real week: skip it so
+      // it doesn't hand every player a simultaneous win trophy and cash payout.
+      if (vals.every(v => v === 0)) return
       const min = Math.min(...vals)
       for (const [id, pts] of Object.entries(weekPts)) if (pts === min) weeklyWins[id] = (weeklyWins[id] ?? 0) + 1
       // Weekly cash payout (ranked by weekly total; ties split).

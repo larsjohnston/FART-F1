@@ -187,6 +187,10 @@ export async function GET() {
   for (const w of weeks) {
     const entries = Object.entries(w.pts)
     if (!entries.length) continue
+    // Everyone scored 0 → an unplayed/missed round (e.g. a zeroed-out prior-points
+    // backfill), not a real week. Skip it so it doesn't hand every player a
+    // simultaneous "weekly win" and streak bump — same treatment as /api/stats (#49).
+    if (entries.every(([, v]) => v === 0)) continue
     const min = Math.min(...entries.map(([, v]) => v))
     for (const [id, v] of entries) {
       if (v > 0 && (!bestWeek || v < bestWeek.points)) bestWeek = { ...pInfo(id), season: w.season, race_no: w.race_no, points: v }
