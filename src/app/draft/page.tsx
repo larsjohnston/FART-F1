@@ -392,8 +392,9 @@ export default function DraftPage() {
           <div style={{ fontSize: 34, marginBottom: 10 }}>⏳</div>
           <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: 16, marginBottom: 6 }}>Waiting on qualifying</div>
           <div style={{ fontSize: 13, lineHeight: 1.45, maxWidth: 320, margin: '0 auto' }}>
-            The board for {raceName || 'this race'} fills once qualifying is synced — the draft opens
-            after quali. Nothing&apos;s missing; tap Refresh to check again.
+            The board for {raceName || 'this race'}{' '}
+            fills once qualifying is synced — the draft opens after quali. Nothing&apos;s missing;
+            tap Refresh to check again.
           </div>
           <button
             onClick={async () => { setRefreshing(true); try { await refresh() } finally { setRefreshing(false) } }}
