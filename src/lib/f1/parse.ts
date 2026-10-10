@@ -127,3 +127,23 @@ export function parseOpenF1Results(
   }
   return rows
 }
+
+/** Qualifying order from OpenF1's `session_result` for the Qualifying session —
+ *  a fallback for when Jolpica (the Ergast-successor mirror) hasn't posted the
+ *  session yet, which can lag the real grid by hours. Same shape/skip rules as
+ *  `parseOpenF1Results`, just reading `position` as grid order instead of a
+ *  finishing position. Superseded automatically once Jolpica catches up (same
+ *  `onConflict` upsert overwrites these rows). */
+export function parseOpenF1Qualifying(
+  sessionResult: any[],
+  numberToId: Record<number, string>,
+): QualifyingRow[] {
+  const rows: QualifyingRow[] = []
+  for (const r of sessionResult ?? []) {
+    const driverId = numberToId[Number(r.driver_number)]
+    const position = Number(r.position)
+    if (!driverId || !Number.isFinite(position) || position <= 0) continue
+    rows.push({ driverId, code: '', position })
+  }
+  return rows.sort((a, b) => a.position - b.position)
+}
