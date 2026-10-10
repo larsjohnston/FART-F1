@@ -6,6 +6,7 @@ import {
   parseOpenF1,
   openF1NumberToId,
   parseOpenF1Results,
+  parseOpenF1Qualifying,
 } from './parse'
 import { TEAM_COLORS } from './teamColors'
 
@@ -63,22 +64,40 @@ export async function syncRound(season: number, round: number) {
     // headshots/colors unavailable this run
   }
 
+  // Driver-number -> our driverId map sourced from the DB's existing roster (not
+  // just this round's Jolpica payload, which is empty exactly when we need the
+  // OpenF1 qualifying fallback below — the season's grid is already known from
+  // prior rounds).
+  const { data: knownDrivers } = await db.from('drivers').select('id,code')
+  const dbCodeToId = Object.fromEntries((knownDrivers ?? []).map((d) => [d.code, d.id]))
+  const dbNumberToId = openF1NumberToId(openf1Raw, dbCodeToId)
+
   // OpenF1 publishes the provisional finishing order at the flag — minutes ahead
-  // of Jolpica's official classification. Fetch the latest session + its result,
-  // but only trust it if that session is THIS round's race (matched by date), so
-  // a stale "latest" session can never bleed onto the wrong round. Once the
-  // session has ended the result drops into OpenF1's free tier; tolerate any
-  // failure (paid lock mid-race, outage) and fall back to the official path.
+  // of Jolpica's official classification — and, just as usefully, the qualifying
+  // grid the moment that session ends (Jolpica/Ergast-style mirrors can lag the
+  // real qualifying session by hours). Fetch the latest session + its result, but
+  // only trust it if that session is THIS round's race or qualifying (matched by
+  // date for the race, by year for qualifying — quali runs a day or two before
+  // the race, so it won't share the race's date), so a stale "latest" session can
+  // never bleed onto the wrong round. Tolerate any failure (paid lock mid-session,
+  // outage) and fall back to the official path.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let openf1Result: any[] = []
   let openf1MatchesRound = false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let openf1QualiResult: any[] = []
+  let openf1MatchesQuali = false
   try {
     const sessions = await getJSON(`${OPENF1}/sessions?session_key=latest`)
     const sess = Array.isArray(sessions) ? sessions[0] : null
     const isRace = sess?.session_type === 'Race' || sess?.session_name === 'Race'
+    const isQuali = sess?.session_type === 'Qualifying' || sess?.session_name === 'Qualifying'
     if (sess && isRace && sess.year === season && sess.date_start?.slice(0, 10) === raceMeta.date) {
       openf1MatchesRound = true
       openf1Result = await getJSON(`${OPENF1}/session_result?session_key=latest`)
+    } else if (sess && isQuali && sess.year === season) {
+      openf1MatchesQuali = true
+      openf1QualiResult = await getJSON(`${OPENF1}/session_result?session_key=latest`)
     }
   } catch {
     // provisional feed unavailable this run
@@ -168,8 +187,15 @@ export async function syncRound(season: number, round: number) {
       await db.from('constructors').update({ color: col }).eq('id', d.constructorId)
   }
 
-  // Qualifying rows
-  const q = qualiJson ? parseQualifying(qualiJson) : []
+  // Qualifying rows. Jolpica is authoritative; when it hasn't posted yet, fall
+  // back to OpenF1's just-finished Qualifying session so the draft board can
+  // open the moment the real session ends instead of waiting on Jolpica's lag
+  // (sometimes hours). The next sync overwrites these with Jolpica's official
+  // grid the moment it's available (same upsert, same conflict key).
+  let q = qualiJson ? parseQualifying(qualiJson) : []
+  if (!q.length && openf1MatchesQuali && openf1QualiResult.length) {
+    q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
+  }
   if (q.length) {
     const { error: qErr } = await db.from('qualifying').upsert(
       q.map((r) => ({ race_id: raceId, driver_id: r.driverId, position: r.position })),
@@ -214,7 +240,7 @@ export async function syncRound(season: number, round: number) {
     raceId,
     raced: !!writeRows?.length,
     provisional,
-    qualified: !!qualiJson,
+    qualified: q.length > 0,
     drivers: drivers.length,
   }
 }
