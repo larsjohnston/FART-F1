@@ -75,8 +75,10 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   (provisional *or* official), scored with the pool rule, **skipping `historic` drafts**
   (those rounds are covered by `prior_race_points`). Past seasons come from the archive.
 - Data sources: **Jolpica** (Ergast successor) for official results/standings;
-  **OpenF1** for provisional results (a session frees ~30 min after it ends). Provisional
-  order shows first, official classification (penalties) overwrites it.
+  **OpenF1** for provisional results (a session frees ~30 min after it ends) **and as the
+  qualifying-grid fallback** (see `/api/sync` below — Jolpica can lag a finished qualifying
+  session by hours). Provisional order shows first, official classification (penalties)
+  overwrites it.
 
 ## Pages / routes
 - `/draft` — the live draft board when a draft is open; otherwise the **F1 Championship** view
@@ -117,6 +119,17 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   `curl -X POST https://fart-f1.vercel.app/api/sync -d '{"season":2026,"round":N}'` (runs on Vercel,
   which *can* reach Jolpica). Response `provisional:false` + `drivers:22` confirms official data
   landed. Do it per league (each Vercel deployment writes its own schema).
+- **⚠️ Jolpica can lag a finished qualifying session by hours** (it's a community Ergast-successor
+  mirror, not a live-timing source) — an "after qualifying" draft can sit on "⏳ Waiting on
+  qualifying" long after the real session ended. `syncRound` now falls back to **OpenF1**: if
+  Jolpica's `qualifying.json` is still empty, it checks OpenF1's `latest` session and, if it's this
+  season's Qualifying session, pulls the grid from `session_result` (OpenF1 typically has it within
+  minutes). Jolpica's official grid overwrites it automatically on the next sync (same upsert/conflict
+  key) — this is a speed fix, not a trust change. Verified live: synced Singapore GP (2026 R17) hours
+  after quali and the fallback produced the real grid (Verstappen P1 …) when Jolpica still had
+  nothing. If a draft board is stuck on "waiting on qualifying" after the real session has clearly
+  finished, `POST /api/sync {season, round}` and check the response's `qualified` flag — don't assume
+  it's a code bug before trying a fresh sync.
 - **Season autopilot — `/api/cron` (`syncCalendar` + `advanceSeason`).** A **once-daily**
   Vercel cron (`vercel.json`: `0 6 * * *`) — Hobby allows daily crons; only the old `*/5`
   schedule failed (`cron_jobs_limits_reached`). **GET** is the cron entry, guarded by
@@ -199,6 +212,14 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 - Runtime deps added this era: `web-push` (+ `@types/web-push`) for Web Push, `@anthropic-ai/sdk`
   for commentary. New `set-state-in-effect` lint on browser-capability effects is suppressed inline
   on the exact `setState` line (same accepted pattern as the pre-existing `/standings`, `/draft` ones).
+- **⚠️ JSX whitespace gotcha: `{expr} text` across a line wrap can silently eat the space.** JSX trims
+  leading/trailing whitespace *per physical source line* of a text node. `The board for {raceName}
+  fills…` with `fills` continuing onto a wrapped line renders as `...Prixfills...` — the space right
+  after `{raceName}` is the *leading* character of that line's text segment, so it gets trimmed at
+  compile time (not visible by staring at the source; only by reasoning through JSX's per-line
+  trimming rule, or by looking at the rendered output). Fix: an explicit `{' '}` expression instead of
+  a literal space adjacent to a line break — it isn't subject to line-based trimming. Caught once in
+  the "waiting on qualifying" message; check any new `{expr} word` text that wraps onto a new line.
 
 ## Deploying — BOTH projects are git-linked (auto-deploy, no manual step)
 - GitHub: `larsjohnston/FART-F1`, default branch `main`, repoId **1261728598**.
@@ -276,3 +297,11 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   (committer `noreply@github.com`), which the git-check hook flags. That commit is already merged to
   `main` and deployed; amending it would rewrite merged history. Just note it's GitHub's commit and
   take no action. (Only real, locally-authored unpushed commits should get the `--reset-author` fix.)
+- **⚠️ A new session's local checkout can be stale/on an old branch — don't trust CLAUDE.md or source
+  files at face value without checking.** A fresh session has shown an *old* CLAUDE.md (missing
+  recent sections like this one) and old source files, because the local working tree was sitting on
+  a leftover branch from early in this project's history, while `origin/main` was already many
+  commits ahead. First move in any new session (especially after a gap): `git fetch origin main &&
+  git log --oneline -1` vs `git log --oneline origin/main -1` — if they differ, `git checkout -B
+  <new-branch-name> origin/main` before doing anything else. This is a local-checkout artifact, not a
+  real revert of the repo or production — don't panic-diagnose a "regression" before checking this.
