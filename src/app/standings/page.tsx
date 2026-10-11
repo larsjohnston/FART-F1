@@ -30,6 +30,18 @@ const moneyColor = (n: number) => (n > 0 ? 'var(--live)' : n < 0 ? 'var(--warn)'
 interface Week { raceName: string; hasResults: boolean; provisional: boolean; rows: WeekRow[] }
 interface WeekOption { round: number; name: string }
 
+/** Group rows by a key, preserving insertion order within each group. */
+function groupBy<T, K>(rows: T[], keyFn: (row: T) => K): Map<K, T[]> {
+  const m = new Map<K, T[]>()
+  for (const r of rows) {
+    const k = keyFn(r)
+    const arr = m.get(k)
+    if (arr) arr.push(r)
+    else m.set(k, [r])
+  }
+  return m
+}
+
 export default function StandingsPage() {
   const [view, setView] = useState<'season' | 'week'>('season')
   const [loaded, setLoaded] = useState(false)
@@ -43,14 +55,17 @@ export default function StandingsPage() {
 
   // ---------- Championship + the list of selectable races ----------
   const loadSeasonAndOptions = useCallback(async () => {
-    const { data: players } = await supabase.from('players').select('id,name,color,photo_url')
+    // Independent reads up front, in parallel — was 3 sequential round-trips.
+    const [{ data: players }, { data: prior }, { data: seasonRaceRows }] = await Promise.all([
+      supabase.from('players').select('id,name,color,photo_url'),
+      supabase.from('prior_race_points').select('player_id,round,points').eq('season', CURRENT_SEASON),
+      supabase.from('races').select('id').eq('season', CURRENT_SEASON),
+    ])
     const pl = (players ?? []) as { id: string; name: string; color: string; photo_url: string | null }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
     const photoById: Record<string, string | null> = Object.fromEntries(pl.map(p => [p.id, p.photo_url]))
 
-    const { data: prior } = await supabase
-      .from('prior_race_points').select('player_id,round,points').eq('season', CURRENT_SEASON)
     let cumulative: Record<string, number> = {}
     for (const p of pl) cumulative[p.id] = 0
     for (const r of prior ?? []) cumulative[r.player_id] = (cumulative[r.player_id] ?? 0) + r.points
@@ -81,25 +96,42 @@ export default function StandingsPage() {
     // championship reflects temporary results the moment they sync and then self-
     // corrects when the official classification overwrites them. (Previously this
     // only counted races the commissioner had marked status='complete'.)
-    const { data: seasonRaceRows } = await supabase
-      .from('races').select('id').eq('season', CURRENT_SEASON)
     const seasonRaceIds = (seasonRaceRows ?? []).map(r => r.id)
     const { data: resultRaceRows } = seasonRaceIds.length
       ? await supabase.from('results').select('race_id').in('race_id', seasonRaceIds)
       : { data: [] as { race_id: string }[] }
     const racesWithResults = [...new Set((resultRaceRows ?? []).map(r => r.race_id))]
+
+    // Batch-fetch every race's draft/picks/results in a handful of queries instead
+    // of 3 sequential round-trips PER race (was O(races) network round-trips —
+    // slow and getting slower every week as the season adds races).
     let anyProvisional = false
-    for (const raceId of racesWithResults) {
-      const { data: draft } = await supabase.from('drafts').select('id,historic').eq('race_id', raceId).maybeSingle()
-      if (!draft || draft.historic) continue
-      const { data: picks } = await supabase.from('picks').select('player_id,driver_id').eq('draft_id', draft.id)
-      const { data: results } = await supabase.from('results').select('driver_id,finish_position,provisional').eq('race_id', raceId)
-      if ((results ?? []).some(r => r.provisional)) anyProvisional = true
-      const byPlayer: Record<string, string[]> = {}
-      for (const p of picks ?? []) (byPlayer[p.player_id] ??= []).push(p.driver_id)
-      const week = scoreRace(byPlayer, (results ?? []).map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
-      cumulative = addToCumulative(cumulative, week)
-      awardWeek(week)
+    if (racesWithResults.length) {
+      const [{ data: draftRows }, { data: resultRows }] = await Promise.all([
+        supabase.from('drafts').select('id,race_id,historic').in('race_id', racesWithResults),
+        supabase.from('results').select('race_id,driver_id,finish_position,provisional').in('race_id', racesWithResults),
+      ])
+      // historic drafts are covered by prior_race_points, same as the old per-race `continue`.
+      const liveDraftByRace = new Map((draftRows ?? []).filter(d => !d.historic).map(d => [d.race_id, d]))
+      const draftIds = [...liveDraftByRace.values()].map(d => d.id)
+      const { data: pickRows } = draftIds.length
+        ? await supabase.from('picks').select('player_id,driver_id,draft_id').in('draft_id', draftIds)
+        : { data: [] as { player_id: string; driver_id: string; draft_id: string }[] }
+      const picksByDraft = groupBy(pickRows ?? [], p => p.draft_id)
+      const resultsByRace = groupBy(resultRows ?? [], r => r.race_id)
+
+      for (const raceId of racesWithResults) {
+        const draft = liveDraftByRace.get(raceId)
+        if (!draft) continue
+        const picks = picksByDraft.get(draft.id) ?? []
+        const results = resultsByRace.get(raceId) ?? []
+        if (results.some(r => r.provisional)) anyProvisional = true
+        const byPlayer: Record<string, string[]> = {}
+        for (const p of picks) (byPlayer[p.player_id] ??= []).push(p.driver_id)
+        const week = scoreRace(byPlayer, results.map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
+        cumulative = addToCumulative(cumulative, week)
+        awardWeek(week)
+      }
     }
     setSeasonProvisional(anyProvisional)
     setSeasonRows(
@@ -109,10 +141,11 @@ export default function StandingsPage() {
     )
 
     // Selectable races = any with a draft (picks) or with entered prior points.
-    const { data: drafts } = await supabase.from('drafts').select('race_id')
-    const { data: priorRounds } = await supabase.from('prior_race_points').select('round').eq('season', CURRENT_SEASON)
-    const { data: seasonRaces } = await supabase
-      .from('races').select('id,round,name').eq('season', CURRENT_SEASON).order('round')
+    const [{ data: drafts }, { data: priorRounds }, { data: seasonRaces }] = await Promise.all([
+      supabase.from('drafts').select('race_id'),
+      supabase.from('prior_race_points').select('round').eq('season', CURRENT_SEASON),
+      supabase.from('races').select('id,round,name').eq('season', CURRENT_SEASON).order('round'),
+    ])
     const draftRaceIds = new Set((drafts ?? []).map(d => d.race_id))
     const priorRoundSet = new Set((priorRounds ?? []).map(r => r.round))
     const options = (seasonRaces ?? [])
@@ -124,10 +157,11 @@ export default function StandingsPage() {
 
   // ---------- One race's per-player results ----------
   const loadWeek = useCallback(async (round: number) => {
-    const { data: race } = await supabase
-      .from('races').select('id,name').eq('season', CURRENT_SEASON).eq('round', round).maybeSingle()
+    const [{ data: race }, { data: players }] = await Promise.all([
+      supabase.from('races').select('id,name').eq('season', CURRENT_SEASON).eq('round', round).maybeSingle(),
+      supabase.from('players').select('id,name,color,photo_url'),
+    ])
     if (!race) { setWeek(null); return }
-    const { data: players } = await supabase.from('players').select('id,name,color,photo_url')
     const pl = (players ?? []) as { id: string; name: string; color: string; photo_url: string | null }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
     const colorById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.color]))
@@ -141,10 +175,12 @@ export default function StandingsPage() {
     }
 
     if (picks.length) {
-      const { data: results } = await supabase.from('results').select('driver_id,finish_position,provisional').eq('race_id', race.id)
-      const { data: quali } = await supabase.from('qualifying').select('driver_id,position').eq('race_id', race.id)
-      const { data: drv } = await supabase.from('drivers').select('id,given_name,family_name,constructor_id')
-      const { data: cons } = await supabase.from('constructors').select('id,color')
+      const [{ data: results }, { data: quali }, { data: drv }, { data: cons }] = await Promise.all([
+        supabase.from('results').select('driver_id,finish_position,provisional').eq('race_id', race.id),
+        supabase.from('qualifying').select('driver_id,position').eq('race_id', race.id),
+        supabase.from('drivers').select('id,given_name,family_name,constructor_id'),
+        supabase.from('constructors').select('id,color'),
+      ])
       const consColor = new Map((cons ?? []).map(c => [c.id, c.color as string]))
       const driverInfo = new Map((drv ?? []).map(d => [d.id, {
         name: `${d.given_name?.[0] ?? ''}. ${d.family_name}`,
