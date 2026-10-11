@@ -140,6 +140,17 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   `league_settings.draft_timing` (**before** = open day after the previous race; **after** =
   open once that race's qualifying is synced). Only one draft open at a time; never reopens a
   `drafting`/`complete` race. **Requires `CRON_SECRET` set in Vercel project env.**
+- **Qualifying-start push alert — `/api/cron/quali-alert`.** A separate, **frequent** (`*/15 * * * *`,
+  `vercel.json`) companion cron — the Vercel team is on the **Pro plan**, which allows sub-daily
+  schedules (the daily-only limit in the note above was a Hobby-plan constraint from before the
+  upgrade). `races.quali_starts_at` (timestamptz) is populated from Jolpica's schedule
+  `Qualifying.date/time` sub-object by both `syncCalendar` (bulk, the whole season) and `syncRound`
+  (per-race; only sets the column when Jolpica actually has it this round, so it can't clobber a
+  value `syncCalendar` already set with `null`). Each tick: find the earliest race whose
+  `quali_starts_at` has passed and `quali_notified_at` is still null, push **"🏁 {city} qualifying is
+  starting"** to every player, then set `quali_notified_at` — idempotent, fires exactly once per
+  race regardless of how often the cron runs. Independent of the daily `/api/cron` autopilot (doesn't
+  touch calendar sync, draft opening, etc.). Guarded by the same `CRON_SECRET`.
 
 ## PWA (installable app)
 - Installable to the home screen on iOS + Android (Add to Home Screen / Install app), launches
@@ -179,6 +190,8 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 - During a draft: **"🏁 You're on the clock"** to the next player + **"a pick was made"** to
   every other player. Works only on **installed PWAs** (iOS 16.4+ requires Add-to-Home-Screen),
   after the player taps **🔔 Notify me on my turn** on `/draft` (`components/EnableNotifications.tsx`).
+- **"🏁 {city} qualifying is starting"** to every player, the moment the real qualifying session
+  starts each race weekend — see `/api/cron/quali-alert` above. Same subscription, no extra opt-in.
 - `lib/push/server.ts` (`sendToPlayers`, `web-push`, prunes dead 404/410 subs);
   `POST /api/push/subscribe` (stores a device sub); `POST /api/push/notify-pick` (fired
   fire-and-forget by the picking client — recomputes draft state, generates commentary, sends

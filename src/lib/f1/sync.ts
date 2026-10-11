@@ -19,6 +19,16 @@ async function getJSON(url: string) {
   return res.json()
 }
 
+/** Jolpica's schedule entries carry a `Qualifying: {date, time}` sub-object once
+ *  that session is on the published calendar (`time` is already UTC, e.g.
+ *  "13:30:00Z") — combine into one ISO timestamp for the quali-alert cron. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function qualiStartISO(raceMeta: any): string | null {
+  const date = raceMeta?.Qualifying?.date
+  if (!date) return null
+  return `${date}T${raceMeta.Qualifying.time ?? '00:00:00Z'}`
+}
+
 /** Sync one race round: drivers, constructors, qualifying, and results (if available). */
 export async function syncRound(season: number, round: number) {
   const db = serverClient()
@@ -116,11 +126,15 @@ export async function syncRound(season: number, round: number) {
         ? 'complete'
         : 'upcoming'
 
-  // Upsert race row
+  // Upsert race row. Only include quali_starts_at when Jolpica actually has it
+  // this round — omitting the key (rather than sending null) means a later
+  // fetch that happens not to carry it can't clobber a value already set by an
+  // earlier sync (e.g. via syncCalendar's season-wide schedule).
+  const qualiISO = qualiStartISO(raceMeta)
   const { data: raceRow, error: raceErr } = await db
     .from('races')
     .upsert(
-      { season, round, name: raceMeta.raceName, date: raceMeta.date, status },
+      { season, round, name: raceMeta.raceName, date: raceMeta.date, status, ...(qualiISO ? { quali_starts_at: qualiISO } : {}) },
       { onConflict: 'season,round' },
     )
     .select()
@@ -247,8 +261,9 @@ export async function syncRound(season: number, round: number) {
 
 /** Load the full season calendar into `races` so every round shows up in the
  * commissioner dropdown immediately — well before any qualifying/results exist.
- * Upserts name + date only, so an existing round's status (drafting/complete)
- * is never clobbered; brand-new rounds land with the table default 'upcoming'. */
+ * Upserts name + date + quali_starts_at (once Jolpica has it) only, so an
+ * existing round's status (drafting/complete) is never clobbered; brand-new
+ * rounds land with the table default 'upcoming'. */
 export async function syncCalendar(season: number) {
   const db = serverClient()
 
@@ -263,6 +278,7 @@ export async function syncCalendar(season: number) {
     round: Number(r.round),
     name: r.raceName as string,
     date: (r.date as string) ?? null,
+    quali_starts_at: qualiStartISO(r),
   }))
 
   const { error } = await db.from('races').upsert(rows, { onConflict: 'season,round' })
