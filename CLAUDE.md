@@ -140,17 +140,27 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   `league_settings.draft_timing` (**before** = open day after the previous race; **after** =
   open once that race's qualifying is synced). Only one draft open at a time; never reopens a
   `drafting`/`complete` race. **Requires `CRON_SECRET` set in Vercel project env.**
-- **Qualifying-start push alert — `/api/cron/quali-alert`.** A separate, **frequent** (`*/15 * * * *`,
-  `vercel.json`) companion cron — the Vercel team is on the **Pro plan**, which allows sub-daily
-  schedules (the daily-only limit in the note above was a Hobby-plan constraint from before the
-  upgrade). `races.quali_starts_at` (timestamptz) is populated from Jolpica's schedule
-  `Qualifying.date/time` sub-object by both `syncCalendar` (bulk, the whole season) and `syncRound`
-  (per-race; only sets the column when Jolpica actually has it this round, so it can't clobber a
-  value `syncCalendar` already set with `null`). Each tick: find the earliest race whose
-  `quali_starts_at` has passed and `quali_notified_at` is still null, push **"🏁 {city} qualifying is
-  starting"** to every player, then set `quali_notified_at` — idempotent, fires exactly once per
-  race regardless of how often the cron runs. Independent of the daily `/api/cron` autopilot (doesn't
-  touch calendar sync, draft opening, etc.). Guarded by the same `CRON_SECRET`.
+- **Qualifying weekend push alerts — `/api/cron/quali-alert`.** A separate, **frequent**
+  (`*/15 * * * *`, `vercel.json`) companion cron — the Vercel team is on the **Pro plan**, which
+  allows sub-daily schedules (the daily-only limit in the note above was a Hobby-plan constraint
+  from before the upgrade). `races.quali_starts_at` (timestamptz) is populated from Jolpica's
+  schedule `Qualifying.date/time` sub-object by both `syncCalendar` (bulk, the whole season) and
+  `syncRound` (per-race; only sets the column when Jolpica actually has it this round, so it can't
+  clobber a value `syncCalendar` already set with `null`). Each tick runs three idempotent jobs in
+  order, each keyed off a `races` column set right after it fires so it never repeats:
+  1. **"📅 {city} weekend starts tomorrow"** — the earliest race whose `quali_starts_at` is
+     between now and +24h and `race_tomorrow_notified_at` is still null; sets that column after
+     sending.
+  2. **"🏁 {city} qualifying is starting"** — the earliest race whose `quali_starts_at` has passed
+     and `quali_notified_at` is still null; sets that column after sending.
+  3. **`advanceSeason(today())`** — the *same* idempotent routine the once-daily `/api/cron` runs
+     (sync results/qualifying, auto-complete finished races, open the next draft +
+     its "🏁 draft is open" push once that race's gate clears). Running it here too means a
+     Post-Qualifying-timing league's draft opens (and notifies) within ~15 minutes of qualifying
+     data landing, instead of waiting up to a day for the daily cron. Both crons calling the same
+     idempotent function concurrently is safe by design (documented on `advanceSeason` itself).
+  All three columns (`quali_starts_at`, `quali_notified_at`, `race_tomorrow_notified_at`) live on
+  `races` in both schemas (migrations 0014, 0015). Guarded by the same `CRON_SECRET` as `/api/cron`.
 
 ## PWA (installable app)
 - Installable to the home screen on iOS + Android (Add to Home Screen / Install app), launches
