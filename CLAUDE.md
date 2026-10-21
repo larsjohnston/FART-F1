@@ -273,6 +273,17 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
 ## Supabase + env (infra learnings)
 - Supabase project **ref `oxydbpdbhdfopdafhcxh`** (URL `https://oxydbpdbhdfopdafhcxh.supabase.co`),
   name "larsjohnston's Project". The other project (`Spec-Writer`) is **not** this app.
+- **⚠️ Browser client (`lib/supabase/client.ts`) must keep Auth session persistence OFF.** This app
+  never uses Supabase Auth — identity is plain localStorage via `usePlayer`/`NamePicker` — but
+  `createClient()` defaults to a full GoTrueClient session (persist + auto-refresh + a
+  lock-guarded `getSession()` that every `supabase.from(...)` call awaits internally for its auth
+  header). That lock can get stuck (known supabase-js issue, especially when a mobile/PWA tab is
+  backgrounded mid-request), and every later query then queues behind it forever — this is exactly
+  what caused the reported `/draft` "hangs on open, only recovers after navigating away and back"
+  bug in both leagues (fixed in PR #66). Client is created with
+  `auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }` — don't
+  remove this. `server.ts` already had `persistSession: false` for the same reason; if a new
+  Supabase client is ever added anywhere, give it the same auth config.
 - **Reaching the DB from this environment (updated — network policy varies!).** In the current
   Claude-Code-on-the-web environment `*.supabase.co` **is reachable** (PostgREST returns 401, not
   000 — test with `curl -o /dev/null -w '%{http_code}' https://oxydbpdbhdfopdafhcxh.supabase.co/rest/v1/`).
