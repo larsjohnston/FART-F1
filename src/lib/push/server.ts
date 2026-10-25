@@ -49,7 +49,16 @@ export async function sendToPlayers(playerIds: string[], payload: PushPayload) {
         sent++
       } catch (e: unknown) {
         const code = (e as { statusCode?: number })?.statusCode
-        if (code === 404 || code === 410) dead.push(s.id)
+        if (code === 404 || code === 410) {
+          dead.push(s.id)
+        } else {
+          // Any other failure (bad VAPID auth, payload rejected, network error,
+          // etc.) was previously swallowed with no trace — log it so a silent
+          // "pushes stopped working" report is diagnosable from Vercel logs.
+          const body = (e as { body?: string })?.body
+          const message = e instanceof Error ? e.message : String(e)
+          console.error(`push send failed endpoint=${s.endpoint} statusCode=${code} message=${message} body=${body}`)
+        }
       }
     }),
   )
