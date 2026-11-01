@@ -207,9 +207,19 @@ export async function syncRound(season: number, round: number) {
   // (sometimes hours). The next sync overwrites these with Jolpica's official
   // grid the moment it's available (same upsert, same conflict key).
   let q = qualiJson ? parseQualifying(qualiJson) : []
+  const qualiSource = q.length ? 'jolpica' : null
   if (!q.length && openf1MatchesQuali && openf1QualiResult.length) {
     q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
   }
+  // TEMP DIAGNOSTIC (remove once round 19's qualifying source is understood):
+  // log exactly what each source returned so a rejection is explainable from
+  // Vercel logs instead of guessed at.
+  console.log(
+    `quali-diag round=${round} source=${q.length ? (qualiSource ?? 'openf1') : 'none'} ` +
+      `jolpicaRows=${qualiJson ? (qualiJson.MRData?.RaceTable?.Races?.[0]?.QualifyingResults?.length ?? 0) : 'null'} ` +
+      `openf1Matches=${openf1MatchesQuali} openf1Rows=${openf1QualiResult.length} ` +
+      `positions=${JSON.stringify(q.map((r) => ({ d: r.driverId, p: r.position })))}`,
+  )
   // A classification can only ever have one driver per position — two drivers
   // sharing a position means the source hasn't finished classifying yet (a
   // partial/incremental post, or a live OpenF1 snapshot taken mid-session).
