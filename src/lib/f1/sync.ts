@@ -210,12 +210,25 @@ export async function syncRound(season: number, round: number) {
   if (!q.length && openf1MatchesQuali && openf1QualiResult.length) {
     q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
   }
-  if (q.length) {
-    const { error: qErr } = await db.from('qualifying').upsert(
+  // A classification can only ever have one driver per position — two drivers
+  // sharing a position means the source hasn't finished classifying yet (a
+  // partial/incremental post, or a live OpenF1 snapshot taken mid-session).
+  // Writing that would corrupt the board (ties, a missing slot) and, worse,
+  // upsert only touches the drivers in THIS fetch — if an earlier sync wrote
+  // a fuller set (e.g. the OpenF1 fallback) and a newer one only covers some
+  // drivers, upsert alone leaves the rest stale, mixing old and new rows into
+  // exactly this kind of inconsistent table. So: reject a set with duplicate
+  // positions outright, and otherwise fully REPLACE this race's qualifying
+  // rows (delete then insert) instead of merging, so a differently-sized
+  // fetch can never leave stale leftovers behind.
+  const hasDuplicatePositions = new Set(q.map((r) => r.position)).size !== q.length
+  if (q.length && !hasDuplicatePositions) {
+    const { error: delErr } = await db.from('qualifying').delete().eq('race_id', raceId)
+    if (delErr) throw new Error(`qualifying delete failed: ${delErr.message}`)
+    const { error: qErr } = await db.from('qualifying').insert(
       q.map((r) => ({ race_id: raceId, driver_id: r.driverId, position: r.position })),
-      { onConflict: 'race_id,driver_id' },
     )
-    if (qErr) throw new Error(`qualifying upsert failed: ${qErr.message}`)
+    if (qErr) throw new Error(`qualifying insert failed: ${qErr.message}`)
   }
 
   // Results rows: Jolpica's official classification is authoritative and wins
@@ -254,7 +267,8 @@ export async function syncRound(season: number, round: number) {
     raceId,
     raced: !!writeRows?.length,
     provisional,
-    qualified: q.length > 0,
+    qualified: q.length > 0 && !hasDuplicatePositions,
+    qualifyingRejected: q.length > 0 && hasDuplicatePositions,
     drivers: drivers.length,
   }
 }
