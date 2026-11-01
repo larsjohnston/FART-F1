@@ -206,32 +206,41 @@ export async function syncRound(season: number, round: number) {
   // open the moment the real session ends instead of waiting on Jolpica's lag
   // (sometimes hours). The next sync overwrites these with Jolpica's official
   // grid the moment it's available (same upsert, same conflict key).
-  let q = qualiJson ? parseQualifying(qualiJson) : []
-  const qualiSource = q.length ? 'jolpica' : null
-  if (!q.length && openf1MatchesQuali && openf1QualiResult.length) {
-    q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
+  // A classification can only ever have one driver per position — two drivers
+  // sharing a position means it isn't trustworthy yet (a partial/incremental
+  // post, a live OpenF1 snapshot taken mid-session, or — confirmed live for
+  // round 19 — Jolpica's own mirror occasionally publishing a genuinely
+  // invalid classification with a tie baked in, not just a lag/empty case).
+  const uniquePositions = (rows: { position: number }[]) =>
+    rows.length > 0 && new Set(rows.map((r) => r.position)).size === rows.length
+
+  const jolpicaQ = qualiJson ? parseQualifying(qualiJson) : []
+  let q = jolpicaQ
+  let qualiSource = jolpicaQ.length ? 'jolpica' : null
+  if (!uniquePositions(jolpicaQ) && openf1MatchesQuali && openf1QualiResult.length) {
+    const openf1Q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
+    if (uniquePositions(openf1Q)) {
+      q = openf1Q
+      qualiSource = 'openf1'
+    }
   }
-  // TEMP DIAGNOSTIC (remove once round 19's qualifying source is understood):
-  // log exactly what each source returned so a rejection is explainable from
-  // Vercel logs instead of guessed at.
+  // Lightweight diagnostic — one line per sync, cheap, and the only way a
+  // rejection (below) is explainable from Vercel logs instead of guessed at.
   console.log(
-    `quali-diag round=${round} source=${q.length ? (qualiSource ?? 'openf1') : 'none'} ` +
-      `jolpicaRows=${qualiJson ? (qualiJson.MRData?.RaceTable?.Races?.[0]?.QualifyingResults?.length ?? 0) : 'null'} ` +
-      `openf1Matches=${openf1MatchesQuali} openf1Rows=${openf1QualiResult.length} ` +
+    `quali-sync round=${round} source=${q.length ? (qualiSource ?? 'openf1') : 'none'} ` +
+      `jolpicaRows=${jolpicaQ.length} openf1Rows=${openf1QualiResult.length} ` +
       `positions=${JSON.stringify(q.map((r) => ({ d: r.driverId, p: r.position })))}`,
   )
-  // A classification can only ever have one driver per position — two drivers
-  // sharing a position means the source hasn't finished classifying yet (a
-  // partial/incremental post, or a live OpenF1 snapshot taken mid-session).
-  // Writing that would corrupt the board (ties, a missing slot) and, worse,
-  // upsert only touches the drivers in THIS fetch — if an earlier sync wrote
-  // a fuller set (e.g. the OpenF1 fallback) and a newer one only covers some
-  // drivers, upsert alone leaves the rest stale, mixing old and new rows into
-  // exactly this kind of inconsistent table. So: reject a set with duplicate
-  // positions outright, and otherwise fully REPLACE this race's qualifying
-  // rows (delete then insert) instead of merging, so a differently-sized
-  // fetch can never leave stale leftovers behind.
-  const hasDuplicatePositions = new Set(q.map((r) => r.position)).size !== q.length
+  // Writing a set with duplicate positions would corrupt the board (ties, a
+  // missing slot) and, worse, upsert only touches the drivers in THIS fetch —
+  // if an earlier sync wrote a fuller set (e.g. the OpenF1 fallback) and a
+  // newer one only covers some drivers, upsert alone leaves the rest stale,
+  // mixing old and new rows into exactly this kind of inconsistent table. So:
+  // reject a set with duplicate positions outright, and otherwise fully
+  // REPLACE this race's qualifying rows (delete then insert) instead of
+  // merging, so a differently-sized fetch can never leave stale leftovers
+  // behind.
+  const hasDuplicatePositions = !uniquePositions(q)
   if (q.length && !hasDuplicatePositions) {
     const { error: delErr } = await db.from('qualifying').delete().eq('race_id', raceId)
     if (delErr) throw new Error(`qualifying delete failed: ${delErr.message}`)
