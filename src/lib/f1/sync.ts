@@ -229,6 +229,20 @@ export async function syncRound(season: number, round: number) {
       q.map((r) => ({ race_id: raceId, driver_id: r.driverId, position: r.position })),
     )
     if (qErr) throw new Error(`qualifying insert failed: ${qErr.message}`)
+  } else {
+    // Self-heal: this fetch wasn't good enough to replace what's stored, but
+    // what's stored might ALREADY be the corrupt merge described above (from
+    // before this guard existed, or from a sync that ran before this one).
+    // Showing a broken tie is worse than showing "waiting on qualifying" —
+    // clear it so the board falls back to the empty-board state until a
+    // later sync brings a clean, complete classification.
+    const { data: existingQ } = await db.from('qualifying').select('position').eq('race_id', raceId)
+    const existingHasDuplicates =
+      !!existingQ?.length && new Set(existingQ.map((r) => r.position)).size !== existingQ.length
+    if (existingHasDuplicates) {
+      const { error: healErr } = await db.from('qualifying').delete().eq('race_id', raceId)
+      if (healErr) throw new Error(`qualifying self-heal delete failed: ${healErr.message}`)
+    }
   }
 
   // Results rows: Jolpica's official classification is authoritative and wins
