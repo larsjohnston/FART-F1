@@ -25,6 +25,7 @@ function DraftOrderInner() {
   const [race, setRace] = useState<{ id: string; name: string } | null>(null)
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
   const [msg, setMsg] = useState('')
+  const [existingDraft, setExistingDraft] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -35,10 +36,24 @@ function DraftOrderInner() {
         .from('league_settings').select('drivers_per_week,draft_order_type,draft_order_basis').eq('id', 1).maybeSingle()
       const cfg = { ...DEFAULT_SETTINGS, ...(s ?? {}) } as Settings
       setSettings(cfg)
-      setOrder(await computeDraftOrder(players.map(p => p.id), cfg.draft_order_basis))
       const { data: r } = await supabase
         .from('races').select('id,name').eq('season', CURRENT_SEASON).eq('round', round).maybeSingle()
       setRace(r ?? null)
+
+      // A draft already exists for this race → its pick_order is the real,
+      // frozen order in use. Recomputing from standings here would show a
+      // DIFFERENT order (standings move every time a race scores) with no
+      // relation to what's actually happening in the live draft — show the
+      // real thing instead of a misleading fresh guess.
+      const { data: existing } = r
+        ? await supabase.from('drafts').select('pick_order').eq('race_id', r.id).maybeSingle()
+        : { data: null }
+      if (existing) {
+        setOrder(existing.pick_order)
+        setExistingDraft(true)
+      } else {
+        setOrder(await computeDraftOrder(players.map(p => p.id), cfg.draft_order_basis))
+      }
     })()
   }, [round])
 
@@ -49,6 +64,7 @@ function DraftOrderInner() {
   const city = race ? shortName(race.name) : `Round ${round}`
 
   function move(i: number, dir: -1 | 1) {
+    if (existingDraft) return // order is frozen once a draft exists — see above
     const j = i + dir
     if (j < 0 || j >= order.length) return
     const next = [...order]
@@ -57,6 +73,7 @@ function DraftOrderInner() {
   }
 
   async function autoOrder() {
+    if (existingDraft) return // this race's order is already frozen — see the effect above
     setOrder(await computeDraftOrder(players.map(p => p.id), settings.draft_order_basis))
     setMsg(settings.draft_order_basis === 'weekly'
       ? 'Order set from last week (weekly loser picks first).'
@@ -85,24 +102,36 @@ function DraftOrderInner() {
     <main style={{ padding: 16 }}>
       <Link href="/admin" style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'none' }}>← Commissioner</Link>
       <h1 style={{ fontSize: 22, marginTop: 6 }}>Draft Order — {city}</h1>
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-        Auto-set from {settings.draft_order_basis === 'weekly' ? 'last week (weekly loser first)' : 'the standings (worst-placed first)'};
-        {' '}{settings.draft_order_type === 'snake' ? 'snake' : 'sequential'} order, {settings.drivers_per_week} drivers each. Override with ↑/↓. Change rules in League Settings.
-      </p>
-      <button onClick={autoOrder} style={btn}>↻ Auto-set order</button>
+      {existingDraft ? (
+        <p style={{ color: 'var(--warn)', fontSize: 12, marginTop: 0 }}>
+          This draft is already open — this is the real order in use, frozen when it opened.
+          It can&apos;t be changed from here anymore (recomputing now would just show a different,
+          unrelated guess from today&apos;s standings, not what&apos;s actually happening in the draft).
+        </p>
+      ) : (
+        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
+          Auto-set from {settings.draft_order_basis === 'weekly' ? 'last week (weekly loser first)' : 'the standings (worst-placed first)'};
+          {' '}{settings.draft_order_type === 'snake' ? 'snake' : 'sequential'} order, {settings.drivers_per_week} drivers each. Override with ↑/↓. Change rules in League Settings.
+        </p>
+      )}
+      {!existingDraft && <button onClick={autoOrder} style={btn}>↻ Auto-set order</button>}
 
       <div style={{ marginTop: 10 }}>
         {order.map((id, i) => (
           <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 6 }}>
             <span style={{ flex: 1 }}>{i + 1}. {nameById[id]}</span>
-            <button onClick={() => move(i, -1)} style={{ ...btn, padding: '4px 10px' }}>↑</button>
-            <button onClick={() => move(i, 1)} style={{ ...btn, padding: '4px 10px' }}>↓</button>
+            {!existingDraft && (
+              <>
+                <button onClick={() => move(i, -1)} style={{ ...btn, padding: '4px 10px' }}>↑</button>
+                <button onClick={() => move(i, 1)} style={{ ...btn, padding: '4px 10px' }}>↓</button>
+              </>
+            )}
           </div>
         ))}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-        <button onClick={openDraft} style={{ ...btn, flex: 1 }}>Open {city} Draft</button>
+        {!existingDraft && <button onClick={openDraft} style={{ ...btn, flex: 1 }}>Open {city} Draft</button>}
         <button onClick={complete} style={{ ...btn, flex: 1 }}>Complete {city}</button>
       </div>
 
