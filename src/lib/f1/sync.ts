@@ -219,7 +219,13 @@ export async function syncRound(season: number, round: number) {
   let qualiSource = jolpicaQ.length ? 'jolpica' : null
   if (!uniquePositions(jolpicaQ) && openf1MatchesQuali && openf1QualiResult.length) {
     const openf1Q = parseOpenF1Qualifying(openf1QualiResult, dbNumberToId)
-    if (uniquePositions(openf1Q)) {
+    // Don't trade a tie for a silent gap: unique positions alone isn't
+    // "trustworthy" if OpenF1 simply dropped a driver Jolpica itself knows
+    // about (seen live — OpenF1 can fail to resolve one driver's number and
+    // just omit him, which would make him un-draftable on the board, a worse
+    // failure than a duplicate since nothing flags it). Only accept OpenF1's
+    // version if it covers at least as many drivers as Jolpica's own set.
+    if (uniquePositions(openf1Q) && openf1Q.length >= jolpicaQ.length) {
       q = openf1Q
       qualiSource = 'openf1'
     }
@@ -250,15 +256,18 @@ export async function syncRound(season: number, round: number) {
     if (qErr) throw new Error(`qualifying insert failed: ${qErr.message}`)
   } else {
     // Self-heal: this fetch wasn't good enough to replace what's stored, but
-    // what's stored might ALREADY be the corrupt merge described above (from
-    // before this guard existed, or from a sync that ran before this one).
-    // Showing a broken tie is worse than showing "waiting on qualifying" —
-    // clear it so the board falls back to the empty-board state until a
-    // later sync brings a clean, complete classification.
+    // what's stored might ALREADY be bad — either the corrupt-tie merge
+    // described above, or (seen live — the earlier version of the OpenF1
+    // guard below accepted a unique-but-short set) missing a driver Jolpica's
+    // own roster knows about. Either way a broken board is worse than
+    // "waiting on qualifying" — clear it so a later sync can bring a clean,
+    // COMPLETE classification instead of silently making a driver
+    // un-draftable.
     const { data: existingQ } = await db.from('qualifying').select('position').eq('race_id', raceId)
-    const existingHasDuplicates =
-      !!existingQ?.length && new Set(existingQ.map((r) => r.position)).size !== existingQ.length
-    if (existingHasDuplicates) {
+    const existingIsBad =
+      !!existingQ?.length &&
+      (new Set(existingQ.map((r) => r.position)).size !== existingQ.length || existingQ.length < drivers.length)
+    if (existingIsBad) {
       const { error: healErr } = await db.from('qualifying').delete().eq('race_id', raceId)
       if (healErr) throw new Error(`qualifying self-heal delete failed: ${healErr.message}`)
     }
