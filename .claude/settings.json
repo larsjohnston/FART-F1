@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Vercel__get_project",
+      "Bash(git fetch origin main*)",
+      "mcp__Vercel__get_runtime_logs",
+      "Bash(npx tsc --noEmit -p tsconfig.json)",
+      "mcp__Vercel__get_deployment",
+      "Bash(npx vitest run *)",
+      "Bash(npx eslint *)",
+      "mcp__Vercel__list_deployments",
+      "Bash(npx next build)",
+      "mcp__Vercel__search_vercel_documentation"
+    ]
+  }
+}
