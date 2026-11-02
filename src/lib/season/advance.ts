@@ -142,12 +142,21 @@ export async function advanceSeason(today: string) {
   }
 
   // 2 — sync the current race (latest already started) and the next race so
-  //     results and qualifying are fresh before we decide what to do.
+  //     results and qualifying are fresh before we decide what to do. Skip a
+  //     race that's already 'complete': confirmed live (round 19) — Jolpica
+  //     can itself serve stale results for a stretch after a post-race
+  //     penalty (same lag class as the qualifying-tie issue), and this loop
+  //     re-syncs the current race on EVERY cron tick (every ~15 min), so it
+  //     would silently re-overwrite a manual correction back to the wrong
+  //     values before Jolpica ever catches up. Once a race is complete, only
+  //     an explicit "Update race results" click (the commissioner choosing
+  //     to re-check) should touch it again — the background autopilot's job
+  //     here is done.
   const past = races.filter((r) => r.date && r.date <= today)
   const current = past.length ? past[past.length - 1] : null
   const next = races.find((r) => r.date && r.date > today) ?? null
   for (const r of [current, next]) {
-    if (!r) continue
+    if (!r || r.status === 'complete') continue
     try {
       await syncRound(CURRENT_SEASON, r.round)
       log.push(`synced R${r.round} ${r.name}`)
