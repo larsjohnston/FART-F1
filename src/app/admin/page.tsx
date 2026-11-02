@@ -27,6 +27,7 @@ export default function AdminPage() {
   const [calendarLoaded, setCalendarLoaded] = useState(false)
   const [host, setHost] = useState('')
   const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
 
   // Read the host after mount (avoids SSR/hydration mismatch) to highlight which
   // league this deployment is.
@@ -73,29 +74,50 @@ export default function AdminPage() {
   if (!actingAs) return <NamePicker />
   if (!actingAs.is_commissioner) return <main style={{ padding: 20 }}>Commissioner only.</main>
 
+  // A sync chains several sequential upstream calls (Jolpica + OpenF1) and can
+  // genuinely take 20+ seconds — without a busy state + error handling, a
+  // slow or failed fetch left the UI stuck on "Syncing…" forever with no way
+  // to tell it apart from a real hang. busy now also blocks a second tap
+  // (which would otherwise race another sync of the same round) and always
+  // clears in `finally`, even if the request errors or times out.
   async function sync() {
-    if (!current) return
+    if (!current || busy) return
+    setBusy(true)
     setMsg('Syncing…')
-    const res = await fetch('/api/sync', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ season: CURRENT_SEASON, round: current.round }),
-    }).then(r => r.json())
-    setMsg(
-      !res.ok ? `Error: ${res.error}`
-        : res.provisional ? `Provisional results synced — official will replace them once posted.`
-        : res.raced ? `Results synced — ${res.drivers} drivers.`
-        : res.qualified ? `Qualifying synced — ${res.drivers} drivers.`
-        : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',
-    )
-    await loadCurrentRace()
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ season: CURRENT_SEASON, round: current.round }),
+      }).then(r => r.json())
+      setMsg(
+        !res.ok ? `Error: ${res.error}`
+          : res.provisional ? `Provisional results synced — official will replace them once posted.`
+          : res.raced ? `Results synced — ${res.drivers} drivers.`
+          : res.qualified ? `Qualifying synced — ${res.drivers} drivers.`
+          : 'On the calendar but not qualified yet — sync again after Saturday qualifying.',
+      )
+      await loadCurrentRace()
+    } catch (e: unknown) {
+      setMsg(`Sync failed: ${e instanceof Error ? e.message : String(e)} — try again.`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function openDraftNow() {
+    if (busy) return
+    setBusy(true)
     setMsg('Opening the draft…')
-    const res = await fetch('/api/draft/open', { method: 'POST' }).then(r => r.json())
-    if (!res.ok) { setMsg(`Error: ${res.error}`); return }
-    await loadCurrentRace()
-    setMsg(res.message ?? (res.opened ? `Draft opened for round ${res.opened}.` : 'Nothing to open.'))
+    try {
+      const res = await fetch('/api/draft/open', { method: 'POST' }).then(r => r.json())
+      if (!res.ok) { setMsg(`Error: ${res.error}`); return }
+      await loadCurrentRace()
+      setMsg(res.message ?? (res.opened ? `Draft opened for round ${res.opened}.` : 'Nothing to open.'))
+    } catch (e: unknown) {
+      setMsg(`Failed to open: ${e instanceof Error ? e.message : String(e)} — try again.`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const city = current ? shortName(current.name) : '—'
@@ -132,7 +154,9 @@ export default function AdminPage() {
           {current ? `R${current.round} · ${city}` : (calendarLoaded ? 'No races yet' : 'Loading…')}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={openDraftNow} style={btn}>Open draft now</button>
+          <button onClick={openDraftNow} style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={busy}>
+            {busy ? 'Working…' : 'Open draft now'}
+          </button>
           {current && <Link href={`/admin/order?round=${current.round}`} style={ghost}>Draft Order →</Link>}
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>
@@ -144,7 +168,9 @@ export default function AdminPage() {
 
       <section style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={sync} style={btn} disabled={!current}>Update race results</button>
+          <button onClick={sync} style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!current || busy}>
+            {busy ? 'Syncing…' : 'Update race results'}
+          </button>
           {current && <Link href={`/admin/results?round=${current.round}`} style={ghost}>Enter results manually →</Link>}
         </div>
         <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 10, marginBottom: 0 }}>

@@ -30,49 +30,72 @@ function qualiStartISO(raceMeta: any): string | null {
 }
 
 /** Sync one race round: drivers, constructors, qualifying, and results (if available). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchQualifying(season: number, round: number): Promise<any> {
+  try {
+    const qj = await getJSON(`${JOLPICA}/${season}/${round}/qualifying.json`)
+    return qj?.MRData?.RaceTable?.Races?.[0]?.QualifyingResults?.length ? qj : null
+  } catch {
+    return null // not qualified yet
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchResults(season: number, round: number): Promise<any> {
+  try {
+    const rj = await getJSON(`${JOLPICA}/${season}/${round}/results.json`)
+    return rj?.MRData?.RaceTable?.Races?.[0]?.Results?.length ? rj : null
+  } catch {
+    return null // not raced yet
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchOpenF1Drivers(): Promise<any[]> {
+  try {
+    return await getJSON(`${OPENF1}/drivers?session_key=latest`)
+  } catch {
+    return [] // headshots/colors unavailable this run
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchOpenF1Sessions(): Promise<any> {
+  try {
+    return await getJSON(`${OPENF1}/sessions?session_key=latest`)
+  } catch {
+    return null // provisional feed unavailable this run
+  }
+}
+
 export async function syncRound(season: number, round: number) {
   const db = serverClient()
+
+  // These five upstream fetches are all independent of each other (none needs
+  // another's result — the OpenF1 "sessions" match below only needs raceMeta,
+  // which is cheap and synchronous once schedJson resolves), so running them
+  // in parallel instead of one after another cuts a multi-second sequential
+  // chain down to roughly the slowest single call. Each keeps its own
+  // try/catch and empty/null fallback exactly as before.
+  const [schedJson, qualiJson, resultsJson, openf1Raw, sessions] = await Promise.all([
+    getJSON(`${JOLPICA}/${season}/${round}.json`),
+    fetchQualifying(season, round),
+    fetchResults(season, round),
+    fetchOpenF1Drivers(),
+    fetchOpenF1Sessions(),
+  ])
 
   // Race meta comes from the SCHEDULE endpoint — it exists as soon as the season
   // calendar is published, so a round that hasn't qualified yet still resolves
   // (instead of failing with a misleading "no race" error).
-  const schedJson = await getJSON(`${JOLPICA}/${season}/${round}.json`)
   const raceMeta = schedJson.MRData.RaceTable.Races[0]
   if (!raceMeta) throw new Error(`Round ${round} isn’t on the ${season} F1 calendar.`)
-
-  // Qualifying may not be posted yet (empty until the Saturday session).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let qualiJson: any = null
-  try {
-    const qj = await getJSON(`${JOLPICA}/${season}/${round}/qualifying.json`)
-    if (qj?.MRData?.RaceTable?.Races?.[0]?.QualifyingResults?.length) qualiJson = qj
-  } catch {
-    // not qualified yet
-  }
-
-  // Results may not exist before the race; tolerate fetch failure / empty Races.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let resultsJson: any = null
-  try {
-    const rj = await getJSON(`${JOLPICA}/${season}/${round}/results.json`)
-    if (rj?.MRData?.RaceTable?.Races?.[0]?.Results?.length) resultsJson = rj
-  } catch {
-    // not raced yet
-  }
 
   // OpenF1 supplies driver headshots + live livery colors, but it is cosmetic
   // and locks down to paid users *during a live session* (i.e. while the race is
   // running). Never let it block the core Jolpica draft data — cards fall back to
   // colored initials, and TEAM_COLORS covers team colors.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let openf1Raw: any[] = []
-  let openf1: Record<string, { headshotUrl: string; teamColour: string; teamName: string }> = {}
-  try {
-    openf1Raw = await getJSON(`${OPENF1}/drivers?session_key=latest`)
-    openf1 = parseOpenF1(openf1Raw)
-  } catch {
-    // headshots/colors unavailable this run
-  }
+  const openf1 = parseOpenF1(openf1Raw)
 
   // Driver-number -> our driverId map sourced from the DB's existing roster (not
   // just this round's Jolpica payload, which is empty exactly when we need the
@@ -85,12 +108,12 @@ export async function syncRound(season: number, round: number) {
   // OpenF1 publishes the provisional finishing order at the flag — minutes ahead
   // of Jolpica's official classification — and, just as usefully, the qualifying
   // grid the moment that session ends (Jolpica/Ergast-style mirrors can lag the
-  // real qualifying session by hours). Fetch the latest session + its result, but
-  // only trust it if that session is THIS round's race or qualifying (matched by
-  // date for the race, by year for qualifying — quali runs a day or two before
-  // the race, so it won't share the race's date), so a stale "latest" session can
-  // never bleed onto the wrong round. Tolerate any failure (paid lock mid-session,
-  // outage) and fall back to the official path.
+  // real qualifying session by hours). The "sessions" list was already fetched
+  // above in parallel; only trust it if that session is THIS round's race or
+  // qualifying (matched by date for the race, by year for qualifying — quali
+  // runs a day or two before the race, so it won't share the race's date), so a
+  // stale "latest" session can never bleed onto the wrong round. Tolerate any
+  // failure (paid lock mid-session, outage) and fall back to the official path.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let openf1Result: any[] = []
   let openf1MatchesRound = false
@@ -98,7 +121,6 @@ export async function syncRound(season: number, round: number) {
   let openf1QualiResult: any[] = []
   let openf1MatchesQuali = false
   try {
-    const sessions = await getJSON(`${OPENF1}/sessions?session_key=latest`)
     const sess = Array.isArray(sessions) ? sessions[0] : null
     const isRace = sess?.session_type === 'Race' || sess?.session_name === 'Race'
     const isQuali = sess?.session_type === 'Qualifying' || sess?.session_name === 'Qualifying'
@@ -195,11 +217,16 @@ export async function syncRound(season: number, round: number) {
   if (dErr) throw new Error(`drivers upsert failed: ${dErr.message}`)
 
   // Enrich constructor colors from OpenF1 (any current driver on the team).
-  for (const d of drivers) {
-    const col = openf1[d.code]?.teamColour
-    if (col)
-      await db.from('constructors').update({ color: col }).eq('id', d.constructorId)
-  }
+  // Independent per-constructor updates (idempotent — same value either way
+  // for a given team) — run them concurrently instead of one round-trip at a
+  // time, which was the single biggest contributor to a sync's wall-clock
+  // time with a full 20+ driver grid.
+  await Promise.all(
+    drivers.map((d) => {
+      const col = openf1[d.code]?.teamColour
+      return col ? db.from('constructors').update({ color: col }).eq('id', d.constructorId) : null
+    }),
+  )
 
   // Qualifying rows. Jolpica is authoritative; when it hasn't posted yet, fall
   // back to OpenF1's just-finished Qualifying session so the draft board can
