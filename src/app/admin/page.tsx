@@ -80,15 +80,26 @@ export default function AdminPage() {
   // to tell it apart from a real hang. busy now also blocks a second tap
   // (which would otherwise race another sync of the same round) and always
   // clears in `finally`, even if the request errors or times out.
-  async function sync() {
+  async function sync(force = false) {
     if (!current || busy) return
     setBusy(true)
     setMsg('Syncing…')
     try {
       const res = await fetch('/api/sync', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ season: CURRENT_SEASON, round: current.round }),
+        body: JSON.stringify({ season: CURRENT_SEASON, round: current.round, force }),
       }).then(r => r.json())
+      if (res.ok && res.alreadyComplete) {
+        setBusy(false)
+        setMsg('')
+        // This race is already complete — its results may carry a manual
+        // correction Jolpica hasn't caught up with yet (confirmed live more
+        // than once). Only resync it if the commissioner explicitly says so.
+        if (window.confirm(`R${current.round} ${city} is already marked complete. Re-syncing could overwrite a manual correction with stale upstream data. Sync anyway?`)) {
+          await sync(true)
+        }
+        return
+      }
       setMsg(
         !res.ok ? `Error: ${res.error}`
           : res.provisional ? `Provisional results synced — official will replace them once posted.`
@@ -168,7 +179,7 @@ export default function AdminPage() {
 
       <section style={{ marginTop: 16, border: '1px solid var(--line)', borderRadius: 10, padding: 14 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={sync} style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!current || busy}>
+          <button onClick={() => sync()} style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!current || busy}>
             {busy ? 'Syncing…' : 'Update race results'}
           </button>
           {current && <Link href={`/admin/results?round=${current.round}`} style={ghost}>Enter results manually →</Link>}
