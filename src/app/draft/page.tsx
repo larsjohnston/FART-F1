@@ -85,7 +85,20 @@ export default function DraftPage() {
     const { data: settings } = await supabase
       .from('league_settings').select('draft_timing').eq('id', 1).maybeSingle()
 
-    if (settings?.draft_timing === 'before') {
+    // This race's qualifying grid, if it's landed yet — checked regardless of
+    // draft_timing. A 'before' league normally opens its draft ahead of
+    // qualifying (hence the championship-standings fallback below), but if the
+    // draft is still open once qualifying actually syncs, the real grid is the
+    // more accurate and current source (it also reflects a last-minute driver
+    // change, e.g. a reserve stepping in, before Jolpica's championship feed
+    // catches up) and should take over.
+    const { data: q } = await supabase
+      .from('qualifying')
+      .select('driver_id,position')
+      .eq('race_id', race.id)
+    const qmap = new Map((q ?? []).map(r => [r.driver_id, r.position]))
+
+    if (settings?.draft_timing === 'before' && qmap.size === 0) {
       // Board = all current drivers ranked by the F1 drivers' championship.
       const champ = await fetch(`/api/championship?season=${CURRENT_SEASON}`).then(r => r.json()).catch(() => null)
       const list: { id: string; name: string; team: string; constructorId: string }[] = champ?.drivers ?? []
@@ -106,13 +119,7 @@ export default function DraftPage() {
       return
     }
 
-    // After qualifying: only the drivers who qualified for THIS race, by grid.
-    const { data: q } = await supabase
-      .from('qualifying')
-      .select('driver_id,position')
-      .eq('race_id', race.id)
-    const qmap = new Map((q ?? []).map(r => [r.driver_id, r.position]))
-
+    // Qualifying has landed: only the drivers who qualified for THIS race, by grid.
     setDrivers(
       (drv ?? [])
         .filter((d) => qmap.has(d.id))
