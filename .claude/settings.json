@@ -10,7 +10,8 @@
       "Bash(npx eslint *)",
       "mcp__Vercel__list_deployments",
       "Bash(npx next build)",
-      "mcp__Vercel__search_vercel_documentation"
+      "mcp__Vercel__search_vercel_documentation",
+      "mcp__Supabase__execute_sql"
     ]
   }
 }
