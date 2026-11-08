@@ -317,6 +317,15 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   automatically on merge to `main` for both projects (see "Deploying" above).
 
 ## Workflow (user's standing preferences)
+- **Supabase `execute_sql` (direct DB fixes — bad data, drafts, picks, etc.): just run it, don't
+  ask first** (confirmed preference: "I don't want to allow the sql changes, just want them to
+  do it"). Claude Code's own permission prompt for this tool is already allowlisted in
+  `.claude/settings.json` (PR #80) — don't re-ask in chat before calling it either.
+  - **Limitation, not a choice:** a destructive statement (`DELETE`, `UPDATE` without a narrow
+    `WHERE`, etc.) can still trigger the **Supabase MCP server's own** confirmation prompt to the
+    user, separate from Claude Code's permission system — that one can't be turned off from this
+    repo or its settings. If it times out waiting on that confirmation, say so plainly and
+    offer to re-send it; don't read the timeout as the user having said no.
 - All work on the designated feature branch. For these small changes: open a PR,
   **squash-merge to `main` — without asking** (confirmed preference: "always merge after these
   small changes, don't need to ask"). Both Vercel projects now **auto-deploy on merge** (see
