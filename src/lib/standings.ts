@@ -107,9 +107,10 @@ export async function computeDraftOrder(
 
 /**
  * Draft order = worst-placed first (most points). Ties are broken, in order:
- * 1. Whoever was **leading** (fewer points) in `priorStandings` — the user's
- *    confirmed rule: two players tied after a week, the one who was ahead
- *    going into that week drafts first (keeps their catch-up priority).
+ * 1. Whoever was **trailing** (more points) in `priorStandings` — the user's
+ *    confirmed rule: two players tied after a week, the one who was behind
+ *    going into that week drafts first — same catch-up logic as the
+ *    worst-first order itself, just applied to the tied pair.
  * 2. The given fallback order, for the rare case that's *also* tied (or no
  *    prior standings were supplied, e.g. the 'weekly' basis).
  */
@@ -123,7 +124,7 @@ export function draftOrderFromStandings(
   return [...standings]
     .sort((a, b) =>
       b.points - a.points ||
-      ((prior.get(a.id) ?? 0) - (prior.get(b.id) ?? 0)) ||
+      ((prior.get(b.id) ?? 0) - (prior.get(a.id) ?? 0)) ||
       ((idx.get(a.id) ?? 0) - (idx.get(b.id) ?? 0)))
     .map(s => s.id)
 }
