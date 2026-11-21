@@ -70,5 +70,16 @@
       "Bash(git push *--delete*)",
       "Bash(git push * :*)"
     ]
+  },
+  "extraKnownMarketplaces": {
+    "sarah": {
+      "source": {
+        "source": "github",
+        "repo": "larsjohnston/sarah-config"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sarah@sarah": true
   }
 }
