@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { serverClient } from '@/lib/supabase/server'
 import { CURRENT_SEASON } from '@/lib/config'
 import { rankDraftedPoints } from '@/lib/scoring/score'
+import { lastRounds, formCells, formAverage, formTrend } from '@/lib/stats/form'
 
 const JOLPICA = 'https://api.jolpi.ca/ergast/f1'
 const round1 = (n: number) => Math.round(n * 10) / 10
@@ -121,11 +122,18 @@ export async function GET(req: NextRequest) {
       byDriver.set(r.driver_id, arr)
     }
 
+    // Recent form: the league's last 5 raced rounds, so a driver who sat one out
+    // shows a gap rather than reaching back further.
+    const formRounds = lastRounds([...byDriver.values()].flatMap(fs => fs.map(f => f.round)), 5)
+    const roundLabel = new Map((races ?? []).map(r => [r.round, r.name.replace(/\s+Grand Prix$/i, '')]))
+
     const drivers = [...byDriver.entries()]
       .map(([id, fs]) => {
         const n = fs.length
         const avgFinish = round1(fs.reduce((s, f) => s + f.finish, 0) / n)
-        const last3 = [...fs].sort((a, b) => b.round - a.round).slice(0, 3).map(f => f.finish)
+        const cells = formCells(fs.map(f => ({ round: f.round, finish: f.finish, status: f.status })), formRounds)
+        const formAvg = formAverage(cells)
+        const last5 = cells.map(c => (c ? { ...c, race: roundLabel.get(c.round) ?? `R${c.round}` } : null))
         const poolPoints = poolPointsByDriver.get(id) ?? 0
         // positions gained: prefer real grid, fall back to qualifying position
         const gainable = fs
@@ -141,7 +149,8 @@ export async function GET(req: NextRequest) {
           id, name: driverName.get(id) ?? id,
           team: consName.get(driverCons.get(id) ?? '') ?? '',
           constructorId: driverCons.get(id) ?? '',
-          races: n, avgFinish, retired, retiredOf: withStatus.length, posGained, last3, poolPoints,
+          races: n, avgFinish, retired, retiredOf: withStatus.length, posGained, poolPoints,
+          last5, formAvg: formAvg == null ? null : round1(formAvg), trend: formTrend(cells),
           trackAvg: null as number | null,
         }
       })
