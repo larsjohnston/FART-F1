@@ -34,7 +34,7 @@ function Form({ d }: { d: DriverStat }) {
           key={i}
           title={c ? `${c.race}: ${c.dnf ? 'DNF' : `P${c.finish}`}` : 'Did not race'}
           style={{
-            minWidth: 20, textAlign: 'center',
+            width: 22, textAlign: 'center', fontSize: c?.dnf ? 9 : undefined,
             color: !c ? 'var(--muted)' : c.dnf ? 'var(--accent)' : c.finish <= 3 ? 'var(--live)' : c.finish > 10 ? 'var(--muted)' : 'var(--text)',
             fontWeight: c && !c.dnf && c.finish <= 3 ? 700 : 400,
           }}
