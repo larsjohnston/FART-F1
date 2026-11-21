@@ -369,3 +369,8 @@ within ~15 min. **Whenever you correct a grid by SQL, also set `races.quali_lock
 for that race (migration 0016, both schemas). While set, `syncRound` skips all qualifying writes
 (response carries `qualifyingLocked: true`); results still sync normally. Set it back to `null`
 to resume syncing.
+
+## CI
+`.github/workflows/ci.yml` runs `tsc --noEmit` + `vitest run` on every PR and push to `main`.
+Lint is deliberately **not** gated yet (known pre-existing errors — see "Tech / verifying changes").
+`tests/draft/order.test.ts` covers the draft-order tiebreak (`draftOrderFromStandings`).
