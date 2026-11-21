@@ -348,3 +348,12 @@ realtime filters honour it). Defaults: `fart-f1` / `FART-F1` / `public`.
   git log --oneline -1` vs `git log --oneline origin/main -1` — if they differ, `git checkout -B
   <new-branch-name> origin/main` before doing anything else. This is a local-checkout artifact, not a
   real revert of the repo or production — don't panic-diagnose a "regression" before checking this.
+
+## Manual qualifying-grid corrections — set the lock
+`syncRound` fully replaces a race's `qualifying` rows on every sync, and the 15-minute autopilot
+re-syncs any race that isn't `complete` — so a hand-fixed grid (e.g. a grid penalty; Jolpica's
+`qualifying.json` is the session classification and never reflects penalties) gets overwritten
+within ~15 min. **Whenever you correct a grid by SQL, also set `races.quali_locked_at = now()`**
+for that race (migration 0016, both schemas). While set, `syncRound` skips all qualifying writes
+(response carries `qualifyingLocked: true`); results still sync normally. Set it back to `null`
+to resume syncing.
