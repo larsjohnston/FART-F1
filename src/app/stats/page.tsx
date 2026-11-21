@@ -8,7 +8,9 @@ import Loading from '@/components/Loading'
 
 interface DriverStat {
   id: string; name: string; team: string; constructorId: string; races: number
-  avgFinish: number; retired: number; retiredOf: number; posGained: number; last3: number[]; poolPoints: number; trackAvg: number | null
+  avgFinish: number; retired: number; retiredOf: number; posGained: number; poolPoints: number; trackAvg: number | null
+  last5: ({ round: number; finish: number; dnf: boolean; race: string } | null)[]
+  formAvg: number | null; trend: 'up' | 'down' | 'flat' | null
 }
 interface TopPick { name: string; count: number }
 interface PlayerStat {
@@ -19,6 +21,37 @@ interface PlayerStat {
 interface Superlative { emoji: string; label: string; name: string; color: string; photoUrl: string | null; detail: string }
 interface StatsData { ok: boolean; circuitName: string; drivers: DriverStat[]; players: PlayerStat[]; mostDrafted: TopPick[]; superlatives?: Superlative[]; error?: string }
 
+// Recent form: finishing position in each of the league's last five races, oldest
+// to newest. Colour carries meaning (podium green, DNF red, back of the field
+// muted); the arrow shows the direction of travel and stays blank when steady.
+function Form({ d }: { d: DriverStat }) {
+  const arrow = d.trend === 'up' ? '▲' : d.trend === 'down' ? '▼' : ''
+  const arrowTitle = d.trend === 'up' ? 'Improving' : d.trend === 'down' ? 'Slipping' : ''
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0, fontVariantNumeric: 'tabular-nums' }}>
+      {d.last5.map((c, i) => (
+        <span
+          key={i}
+          title={c ? `${c.race}: ${c.dnf ? 'DNF' : `P${c.finish}`}` : 'Did not race'}
+          style={{
+            width: 22, textAlign: 'center', fontSize: c?.dnf ? 9 : undefined,
+            color: !c ? 'var(--muted)' : c.dnf ? 'var(--accent)' : c.finish <= 3 ? 'var(--live)' : c.finish > 10 ? 'var(--muted)' : 'var(--text)',
+            fontWeight: c && !c.dnf && c.finish <= 3 ? 700 : 400,
+          }}
+        >
+          {c ? (c.dnf ? 'DNF' : c.finish) : '–'}
+        </span>
+      ))}
+      <span
+        title={arrowTitle}
+        style={{ width: 12, textAlign: 'center', fontSize: 9, color: d.trend === 'up' ? 'var(--live)' : 'var(--accent)' }}
+      >
+        {arrow}
+      </span>
+    </span>
+  )
+}
+
 type Col = {
   key: string; label: [string, string]; num: boolean; align: 'left' | 'right'; defDir: 'asc' | 'desc'
   get: (d: DriverStat) => number | string | null
@@ -26,11 +59,11 @@ type Col = {
 }
 const COLS: Col[] = [
   { key: 'name', label: ['Driver', 'Team'], num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => (<><div style={{ fontWeight: 700 }}>{d.name}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{d.team}</div></>) },
+  { key: 'form', label: ['Last 5', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => d.formAvg, cell: d => <Form d={d} /> },
   { key: 'avgFinish', label: ['Avg', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
   { key: 'dnf', label: ['', "DNF's"], num: true, align: 'right', defDir: 'asc', get: d => (d.retiredOf ? d.retired / d.retiredOf : null), cell: d => (d.retiredOf ? `${d.retired}/${d.retiredOf}` : '–') },
   { key: 'poolPoints', label: ['FART', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
   { key: 'trackAvg', label: ['Track', 'Avg'], num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
-  { key: 'form', label: ['Last 3', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => (d.last3.length ? d.last3.reduce((s, x) => s + x, 0) / d.last3.length : null), cell: d => (d.last3.map(p => `P${p}`).join(' ') || '–') },
 ]
 
 type PCol = {
@@ -133,7 +166,7 @@ export default function StatsPage() {
       {data && view === 'drivers' && (
         <>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 0 }}>
-            Tap a column to sort.{data.circuitName ? ` Track Avg is at ${data.circuitName}, last 3 yrs.` : ''} Lower is better.
+            Tap a column to sort.{data.circuitName ? ` Track Avg is at ${data.circuitName}, last 3 yrs.` : ''} Lower is better. Last 5 is the finishing position in each of the last five races, oldest to newest; ▲ improving, ▼ slipping.
           </p>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
