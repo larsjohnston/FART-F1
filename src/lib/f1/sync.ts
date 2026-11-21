@@ -274,7 +274,17 @@ export async function syncRound(season: number, round: number) {
   // merging, so a differently-sized fetch can never leave stale leftovers
   // behind.
   const hasDuplicatePositions = !uniquePositions(q)
-  if (q.length && !hasDuplicatePositions) {
+  // Manual-correction lock: `races.quali_locked_at` (migration 0016) marks a
+  // grid the commissioner corrected by hand — e.g. a grid penalty, which
+  // Jolpica's qualifying.json never reflects (it's the session classification,
+  // not the starting grid). The autopilot re-syncs an open race every ~15 min,
+  // so without this the correction is silently replaced on the next tick
+  // (confirmed live, round 21). While locked, leave the stored grid alone
+  // entirely — no replace, no self-heal. Clear the column to resume syncing.
+  const qualiLocked = !!(raceRow as { quali_locked_at?: string | null }).quali_locked_at
+  if (qualiLocked) {
+    console.log(`quali-sync round=${round} skipped: grid locked by manual correction`)
+  } else if (q.length && !hasDuplicatePositions) {
     const { error: delErr } = await db.from('qualifying').delete().eq('race_id', raceId)
     if (delErr) throw new Error(`qualifying delete failed: ${delErr.message}`)
     const { error: qErr } = await db.from('qualifying').insert(
@@ -338,6 +348,7 @@ export async function syncRound(season: number, round: number) {
     provisional,
     qualified: q.length > 0 && !hasDuplicatePositions,
     qualifyingRejected: q.length > 0 && hasDuplicatePositions,
+    qualifyingLocked: qualiLocked,
     drivers: drivers.length,
   }
 }
