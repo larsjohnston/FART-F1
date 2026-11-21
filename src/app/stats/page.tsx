@@ -28,13 +28,13 @@ function Form({ d }: { d: DriverStat }) {
   const arrow = d.trend === 'up' ? '▲' : d.trend === 'down' ? '▼' : ''
   const arrowTitle = d.trend === 'up' ? 'Improving' : d.trend === 'down' ? 'Slipping' : ''
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontVariantNumeric: 'tabular-nums' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 0, fontVariantNumeric: 'tabular-nums' }}>
       {d.last5.map((c, i) => (
         <span
           key={i}
           title={c ? `${c.race}: ${c.dnf ? 'DNF' : `P${c.finish}`}` : 'Did not race'}
           style={{
-            minWidth: 24, textAlign: 'center',
+            minWidth: 20, textAlign: 'center',
             color: !c ? 'var(--muted)' : c.dnf ? 'var(--accent)' : c.finish <= 3 ? 'var(--live)' : c.finish > 10 ? 'var(--muted)' : 'var(--text)',
             fontWeight: c && !c.dnf && c.finish <= 3 ? 700 : 400,
           }}
@@ -44,7 +44,7 @@ function Form({ d }: { d: DriverStat }) {
       ))}
       <span
         title={arrowTitle}
-        style={{ width: 14, textAlign: 'center', fontSize: 9, color: d.trend === 'up' ? 'var(--live)' : 'var(--accent)' }}
+        style={{ width: 12, textAlign: 'center', fontSize: 9, color: d.trend === 'up' ? 'var(--live)' : 'var(--accent)' }}
       >
         {arrow}
       </span>
@@ -59,11 +59,11 @@ type Col = {
 }
 const COLS: Col[] = [
   { key: 'name', label: ['Driver', 'Team'], num: false, align: 'left', defDir: 'asc', get: d => d.name, cell: d => (<><div style={{ fontWeight: 700 }}>{d.name}</div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{d.team}</div></>) },
+  { key: 'form', label: ['Last 5', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => d.formAvg, cell: d => <Form d={d} /> },
   { key: 'avgFinish', label: ['Avg', 'Finish'], num: true, align: 'right', defDir: 'asc', get: d => d.avgFinish || null, cell: d => (d.avgFinish ? `P${d.avgFinish}` : '–') },
   { key: 'dnf', label: ['', "DNF's"], num: true, align: 'right', defDir: 'asc', get: d => (d.retiredOf ? d.retired / d.retiredOf : null), cell: d => (d.retiredOf ? `${d.retired}/${d.retiredOf}` : '–') },
   { key: 'poolPoints', label: ['FART', 'Pts'], num: true, align: 'right', defDir: 'asc', get: d => d.poolPoints, cell: d => String(d.poolPoints) },
   { key: 'trackAvg', label: ['Track', 'Avg'], num: true, align: 'right', defDir: 'asc', get: d => d.trackAvg, cell: d => (d.trackAvg != null ? `P${d.trackAvg}` : '–') },
-  { key: 'form', label: ['Last 5', 'Races'], num: true, align: 'right', defDir: 'asc', get: d => d.formAvg, cell: d => <Form d={d} /> },
 ]
 
 type PCol = {
