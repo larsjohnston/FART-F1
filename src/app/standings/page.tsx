@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { scoreRace, addToCumulative, rankDraftedPoints } from '@/lib/scoring/score'
+import { championshipOrder } from '@/lib/standings'
 import { CURRENT_SEASON, SUPABASE_SCHEMA, SHOW_BEER_TAB, SHOW_PAYOUTS, WEEKLY_PAYOUTS } from '@/lib/config'
 import PlayerAvatar from '@/components/PlayerAvatar'
 import Loading from '@/components/Loading'
@@ -57,9 +58,9 @@ export default function StandingsPage() {
   const loadSeasonAndOptions = useCallback(async () => {
     // Independent reads up front, in parallel — was 3 sequential round-trips.
     const [{ data: players }, { data: prior }, { data: seasonRaceRows }] = await Promise.all([
-      supabase.from('players').select('id,name,color,photo_url'),
+      supabase.from('players').select('id,name,color,photo_url,sort_order').order('sort_order'),
       supabase.from('prior_race_points').select('player_id,round,points').eq('season', CURRENT_SEASON),
-      supabase.from('races').select('id').eq('season', CURRENT_SEASON),
+      supabase.from('races').select('id,round').eq('season', CURRENT_SEASON),
     ])
     const pl = (players ?? []) as { id: string; name: string; color: string; photo_url: string | null }[]
     const nameById: Record<string, string> = Object.fromEntries(pl.map(p => [p.id, p.name]))
@@ -97,15 +98,21 @@ export default function StandingsPage() {
     // corrects when the official classification overwrites them. (Previously this
     // only counted races the commissioner had marked status='complete'.)
     const seasonRaceIds = (seasonRaceRows ?? []).map(r => r.id)
+    const roundByRace = new Map((seasonRaceRows ?? []).map(r => [r.id, r.round as number]))
     const { data: resultRaceRows } = seasonRaceIds.length
       ? await supabase.from('results').select('race_id').in('race_id', seasonRaceIds)
       : { data: [] as { race_id: string }[] }
+    // Oldest round first, so "before the latest week" below is well defined.
     const racesWithResults = [...new Set((resultRaceRows ?? []).map(r => r.race_id))]
+      .sort((x, y) => (roundByRace.get(x) ?? 0) - (roundByRace.get(y) ?? 0))
 
     // Batch-fetch every race's draft/picks/results in a handful of queries instead
     // of 3 sequential round-trips PER race (was O(races) network round-trips —
     // slow and getting slower every week as the season adds races).
     let anyProvisional = false
+    // Cumulative totals just before the latest scored week — used only to break
+    // championship ties the same way the draft order does.
+    let beforeLatest: Record<string, number> = { ...cumulative }
     if (racesWithResults.length) {
       const [{ data: draftRows }, { data: resultRows }] = await Promise.all([
         supabase.from('drafts').select('id,race_id,historic').in('race_id', racesWithResults),
@@ -129,16 +136,23 @@ export default function StandingsPage() {
         const byPlayer: Record<string, string[]> = {}
         for (const p of picks) (byPlayer[p.player_id] ??= []).push(p.driver_id)
         const week = scoreRace(byPlayer, results.map(x => ({ driverId: x.driver_id, finishPosition: x.finish_position })))
+        beforeLatest = { ...cumulative }
         cumulative = addToCumulative(cumulative, week)
         awardWeek(week)
       }
     }
     setSeasonProvisional(anyProvisional)
-    setSeasonRows(
-      Object.entries(cumulative)
-        .map(([id, points]) => ({ id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', photoUrl: photoById[id] ?? null, points, weeklyWins: weeklyWins[id] ?? 0, money: moneyById[id] ?? 0 }))
-        .sort((a, b) => a.points - b.points),
+    const seasonRowById = new Map(
+      Object.entries(cumulative).map(([id, points]) => [id, { id, name: nameById[id] ?? id, color: colorById[id] ?? '#888', photoUrl: photoById[id] ?? null, points, weeklyWins: weeklyWins[id] ?? 0, money: moneyById[id] ?? 0 }]),
     )
+    // Same tiebreak as the draft order (see championshipOrder), so a tie in the
+    // standings matches who actually drafts first.
+    const order = championshipOrder(
+      Object.entries(cumulative).map(([id, points]) => ({ id, points })),
+      pl.map(p => p.id),
+      Object.entries(beforeLatest).map(([id, points]) => ({ id, points })),
+    )
+    setSeasonRows(order.map(id => seasonRowById.get(id)).filter((r): r is NonNullable<typeof r> => !!r))
 
     // Selectable races = any with a draft (picks) or with entered prior points.
     const [{ data: drafts }, { data: priorRounds }, { data: seasonRaces }] = await Promise.all([

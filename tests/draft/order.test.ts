@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 // load. The function under test is pure, so stub the client out.
 vi.mock('@/lib/supabase/client', () => ({ supabase: {} }))
 
-import { draftOrderFromStandings } from '@/lib/standings'
+import { draftOrderFromStandings, championshipOrder } from '@/lib/standings'
 
 const s = (id: string, points: number) => ({ id, points })
 const tiebreak = ['a', 'b', 'c', 'd']
@@ -69,5 +69,21 @@ describe('draftOrderFromStandings', () => {
     const input = [s('a', 1), s('b', 2)]
     draftOrderFromStandings(input, ['a', 'b'])
     expect(input).toEqual([s('a', 1), s('b', 2)])
+  })
+})
+
+describe('championshipOrder', () => {
+  it('is the draft order reversed, so a tie reads the same in the standings', () => {
+    const standings = [s('tamags', 1064), s('ned', 1072), s('mendo', 1065), s('tup', 1065)]
+    const prior = [s('tamags', 1021), s('ned', 1012), s('mendo', 1013), s('tup', 1010)]
+    const tie = ['tamags', 'ned', 'tup', 'mendo']
+    const draft = draftOrderFromStandings(standings, tie, prior)
+    expect(draft).toEqual(['ned', 'mendo', 'tup', 'tamags'])
+    expect(championshipOrder(standings, tie, prior)).toEqual(['tamags', 'tup', 'mendo', 'ned'])
+    expect(championshipOrder(standings, tie, prior)).toEqual([...draft].reverse())
+  })
+
+  it('ranks the better points total higher regardless of the tiebreak', () => {
+    expect(championshipOrder([s('a', 10), s('b', 20)], ['a', 'b'])).toEqual(['a', 'b'])
   })
 })
