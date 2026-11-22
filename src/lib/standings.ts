@@ -128,3 +128,17 @@ export function draftOrderFromStandings(
       ((idx.get(a.id) ?? 0) - (idx.get(b.id) ?? 0)))
     .map(s => s.id)
 }
+
+/**
+ * Championship order, best-placed first: exactly the draft order reversed, so the
+ * standings and the draft can never disagree about a tie. Points decide it;
+ * when tied, whoever was AHEAD going into the latest week ranks higher (the
+ * player who was trailing ranks lower and drafts first); then the fallback order.
+ */
+export function championshipOrder(
+  standings: PoolStanding[],
+  tiebreak: string[],
+  priorStandings?: PoolStanding[],
+): string[] {
+  return draftOrderFromStandings(standings, tiebreak, priorStandings).reverse()
+}
